@@ -407,15 +407,22 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		columnName.setMoveable(true);
 		columnName.setWidth(200);
 		columnName.setText(LangResources.get("columnheader_name"));
-		final int columnPathIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnName);
+		final int columnNameIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnName);
 		columnName.addListener(SWT.Selection, columnSortListener);
 
-		final TableColumn columnSTatus = new TableColumn(taskInstancesTable, SWT.LEFT);
-		columnSTatus.setMoveable(true);
-		columnSTatus.setWidth(175);
-		columnSTatus.setText(LangResources.get("columnheader_status"));
-		final int columnKeyIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnSTatus);
-		columnSTatus.addListener(SWT.Selection, columnSortListener);
+		final TableColumn columnStart = new TableColumn(taskInstancesTable, SWT.LEFT);
+		columnStart.setMoveable(true);
+		columnStart.setWidth(150);
+		columnStart.setText(LangResources.get("columnheader_start"));
+		final int columnStartIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnStart);
+		columnStart.addListener(SWT.Selection, columnSortListener);
+
+		final TableColumn columnSatus = new TableColumn(taskInstancesTable, SWT.LEFT);
+		columnSatus.setMoveable(true);
+		columnSatus.setWidth(150);
+		columnSatus.setText(LangResources.get("columnheader_status"));
+		final int columnStatusIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnSatus);
+		columnSatus.addListener(SWT.Selection, columnSortListener);
 	}
 
 	protected void configureArgoWfSchedulerClient() {
@@ -621,6 +628,10 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				} catch (final Exception e) {
 					showErrorMessage(LangResources.get("startTask"), "Cannot start newly created task: " + e.getMessage());
 				}
+
+				showMessage(LangResources.get("startTask"), LangResources.get("startedTask", taskID));
+
+				fillTaskInstancesTable();
 			}
 		});
 
@@ -681,6 +692,10 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		}
 		scrolledPart.layout();
 		parametersPart.layout();
+	}
+
+	private void fillTaskInstancesTable() {
+		// TODO
 	}
 
 	private class ConfigButtonSelectionListener extends SelectionAdapter {
