@@ -1,0 +1,11 @@
+Argonaut
+
+Helper for Argo Workflow Scheduler
+
+1. Disclaimer
+
+Argonaut ist ein Hilfstool zur Konfiguration, Plaung und Start von Argo-WF Workflow und Tasks, im Allgemeinen auch Batchjobs genannt.
+Dieser Editor dient dabei ausschließlich der experimentellen Verarbeitung von Daten.
+Jede Verwendung findet auf eigene Gefahr statt.
+Der Entwickler übernimmt KEINERLEI GEWÄHRLEISTUNG, sowohl der korrekten Funktion, sowie für Schäden die aus der Verwendung des Programms entstehen.
+Verbesserungsvorschläge oder Bughinweise bitte an: argonaut@soderer.de
