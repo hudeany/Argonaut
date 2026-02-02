@@ -3,7 +3,6 @@ package de.soderer.argonaut.helper;
 import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
-import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -431,8 +430,8 @@ public class ArgoWfSchedulerClient {
 				status.setTaskID((Integer) jsonObject.getSimpleValue("id"));
 				status.setTaskName((String) jsonObject.getSimpleValue("name"));
 				status.setWorkflowName((String) jsonObject.getSimpleValue("workflowRef"));
-				status.setCreated(OffsetDateTime.parse((String) jsonObject.getSimpleValue("createdAt")).atZoneSameInstant(ZoneId.systemDefault()));
-				status.setUpdated(OffsetDateTime.parse((String) jsonObject.getSimpleValue("updatedAt")).atZoneSameInstant(ZoneId.systemDefault()));
+				status.setCreated(DateUtilities.parseZonedDateTime(DateUtilities.ISO_8601_DATETIME_WITH_NANOS_FORMAT, (String) jsonObject.getSimpleValue("createdAt"), ZoneId.systemDefault()));
+				status.setUpdated(DateUtilities.parseZonedDateTime(DateUtilities.ISO_8601_DATETIME_WITH_NANOS_FORMAT, (String) jsonObject.getSimpleValue("updatedAt"), ZoneId.systemDefault()));
 
 				final Map<Integer, TaskInstanceStatus> instances = new LinkedHashMap<>();
 				for (final JsonNode instanceItem : ((JsonArray) jsonObject.get("instances")).items()) {
@@ -489,8 +488,8 @@ public class ArgoWfSchedulerClient {
 		status.setTaskID((Integer) jsonObject.getSimpleValue("taskId"));
 		status.setTaskInstanceID((Integer) jsonObject.getSimpleValue("id"));
 		status.setWorkflowId((String) jsonObject.getSimpleValue("workflowId"));
-		status.setCreated(OffsetDateTime.parse((String) jsonObject.getSimpleValue("createdAt")).atZoneSameInstant(ZoneId.systemDefault()));
-		status.setUpdated(OffsetDateTime.parse((String) jsonObject.getSimpleValue("updatedAt")).atZoneSameInstant(ZoneId.systemDefault()));
+		status.setCreated(DateUtilities.parseZonedDateTime(DateUtilities.ISO_8601_DATETIME_WITH_NANOS_FORMAT, (String) jsonObject.getSimpleValue("createdAt"), ZoneId.systemDefault()));
+		status.setUpdated(DateUtilities.parseZonedDateTime(DateUtilities.ISO_8601_DATETIME_WITH_NANOS_FORMAT, (String) jsonObject.getSimpleValue("updatedAt"), ZoneId.systemDefault()));
 		status.setStatus((String) jsonObject.getSimpleValue("status"));
 		status.setLogMessage((String) jsonObject.getSimpleValue("message"));
 

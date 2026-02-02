@@ -610,7 +610,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 	public void fillPropertyDataInTableItem(final int index, final TableItem item) {
 		final TaskInstanceStatus taskInstanceStatus = listOfTaskInstanceStatus.get(index);
 		// 0 = DummyColumn
-		item.setText(columnTaskIdIndex, Integer.toString(index + 1));
+		item.setText(columnTaskIdIndex, Integer.toString(taskInstanceStatus.getTaskID()));
 		item.setText(columnInstanceIdIndex, Integer.toString(taskInstanceStatus.getTaskInstanceID()));
 		item.setText(columnTaskNameIndex, taskInstanceStatus.getWorkflowId());
 		final String start = DateUtilities.formatDate(DateUtilities.ISO_8601_DATETIME_FORMAT_NO_TIMEZONE, taskInstanceStatus.getUpdated().withZoneSameInstant(ZoneId.systemDefault()));
@@ -730,19 +730,22 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		public void widgetSelected(final SelectionEvent e) {
 			final List<Tuple<String, String>> selectedItems = getSelectedKeys();
 
+			currentTaskInstanceStatus = null;
+
 			if (selectedItems.size() > 0) {
 				final Tuple<String, String> selectedItem = selectedItems.get(0);
-				currentTaskInstanceStatus = null;
 				for (final TaskInstanceStatus instanceStatus : listOfTaskInstanceStatus) {
 					if (instanceStatus.getTaskID().equals(Integer.parseInt(selectedItem.getFirst())) && instanceStatus.getTaskInstanceID().equals(Integer.parseInt(selectedItem.getSecond()))) {
 						currentTaskInstanceStatus = instanceStatus;
 						break;
 					}
 				}
+			}
 
-				if (currentTaskInstanceStatus != null) {
-					fillParametersPart(currentTaskInstanceStatus.getTaskStatus().getParameters(), true);
-				}
+			if (currentTaskInstanceStatus != null) {
+				fillParametersPart(currentTaskInstanceStatus.getTaskStatus().getParameters(), true);
+			} else {
+				fillParametersPart(null, false);
 			}
 
 			checkButtonStatus();
@@ -826,8 +829,6 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 			}
 			startTaskButton.setEnabled(Utilities.isNotBlank(currentWorkflowTemplateName));
 		}
-
-
 
 		if (taskInstancesTable != null) {
 			taskInstancesTable.setEnabled(taskInstancesTable.getItemCount() > 0);
