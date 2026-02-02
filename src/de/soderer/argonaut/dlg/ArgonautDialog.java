@@ -836,7 +836,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		}
 
 		if (showLogDataButton != null) {
-			showLogDataButton.setEnabled(currentTaskInstanceStatus != null);
+			showLogDataButton.setEnabled(currentTaskInstanceStatus != null && currentTaskInstanceStatus.getLogMessage() != null);
 		}
 	}
 
