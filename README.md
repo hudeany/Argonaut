@@ -1,4 +1,4 @@
- Language Properties Manager
+Argonaut
 
 ![Argonaut.png](https://github.com/hudeany/Argonaut/blob/master/Argonaut.png?raw=true)
 
