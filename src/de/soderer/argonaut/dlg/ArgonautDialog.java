@@ -112,6 +112,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		super(display, Argonaut.APPLICATION_NAME, Argonaut.VERSION, Argonaut.KEYSTORE_FILE);
 
 		this.applicationConfiguration = applicationConfiguration;
+
 		loadConfiguration();
 
 		final Monitor[] monitorArray = display.getMonitors();
