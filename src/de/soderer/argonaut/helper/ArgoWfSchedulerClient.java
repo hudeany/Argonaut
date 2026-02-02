@@ -3,7 +3,7 @@ package de.soderer.argonaut.helper;
 import java.net.URLEncoder;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -14,7 +14,6 @@ import java.util.Map.Entry;
 
 import javax.net.ssl.TrustManager;
 
-import de.soderer.json.Json5Reader;
 import de.soderer.json.JsonArray;
 import de.soderer.json.JsonNode;
 import de.soderer.json.JsonObject;
@@ -26,7 +25,7 @@ import de.soderer.network.HttpUtilities;
 import de.soderer.network.TrustManagerUtilities;
 import de.soderer.pac.utilities.ProxyConfiguration;
 import de.soderer.utilities.DateUtilities;
-import de.soderer.utilities.Utilities;
+import de.soderer.utilities.JwtUtilities;
 
 public class ArgoWfSchedulerClient {
 	private final ProxyConfiguration proxyConfiguration;
@@ -361,7 +360,7 @@ public class ArgoWfSchedulerClient {
 						throw new Exception("Invalid AccessToken JSON data", e);
 					}
 					accesToken = (String) ((JsonObject) contentJson).getSimpleValue("access_token");
-					accessTokenValidUntil = getJwtTokenValidity(accesToken);
+					accessTokenValidUntil = JwtUtilities.getJwtTokenValidity(accesToken);
 				} else {
 					accesToken = null;
 					accessTokenValidUntil = null;
@@ -370,6 +369,89 @@ public class ArgoWfSchedulerClient {
 			}
 
 			return accesToken;
+		} catch (final UnknownHostException e) {
+			throw new Exception("UnknownHost '" + e.getMessage() + "'");
+		}
+	}
+
+	public List<Integer> getWorkflowTemplateTaskIds(final String workflowTemplateName) throws Exception {
+		try {
+			final String accessToken = aquireAccessTokenByClientId();
+
+			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/search");
+			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader("accept", "application/json");
+			request.addUrlParameter("name", workflowTemplateName);
+
+			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
+			if (response.getHttpCode() == 200) {
+				JsonNode contentJson;
+				try {
+					contentJson = JsonReader.readJsonItemString(response.getContent());
+				} catch (final Exception e) {
+					throw new Exception("Invalid Task JSON data", e);
+				}
+
+				final List<Integer> returnList = new ArrayList<>();
+				final JsonArray jsonArray = ((JsonArray) contentJson);
+				for (final JsonNode item : jsonArray.items()) {
+					final JsonObject itemJsonObject = (JsonObject) item;
+					returnList.add((Integer) itemJsonObject.getSimpleValue("id"));
+				}
+				return returnList;
+			} else {
+				throw new Exception("getWorkflowTemplateTaskIds failed. Http Code: " + response.getHttpCode());
+			}
+		} catch (final UnknownHostException e) {
+			throw new Exception("UnknownHost '" + e.getMessage() + "'");
+		}
+	}
+
+	public TaskStatus getTaskStatus(final int taskID) throws Exception {
+		try {
+			final String accessToken = aquireAccessTokenByClientId();
+
+			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID);
+			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader("accept", "application/json");
+
+			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
+			if (response.getHttpCode() == 200) {
+				JsonNode contentJson;
+				try {
+					contentJson = JsonReader.readJsonItemString(response.getContent());
+				} catch (final Exception e) {
+					throw new Exception("Invalid Task JSON data", e);
+				}
+
+				final JsonObject jsonObject = ((JsonObject) contentJson);
+
+				final TaskStatus status = new TaskStatus();
+
+				status.setTaskID((Integer) jsonObject.getSimpleValue("id"));
+				status.setTaskName((String) jsonObject.getSimpleValue("name"));
+				status.setWorkflowName((String) jsonObject.getSimpleValue("workflowRef"));
+				status.setCreated(OffsetDateTime.parse((String) jsonObject.getSimpleValue("createdAt")).atZoneSameInstant(ZoneId.systemDefault()));
+				status.setUpdated(OffsetDateTime.parse((String) jsonObject.getSimpleValue("updatedAt")).atZoneSameInstant(ZoneId.systemDefault()));
+
+				final Map<Integer, TaskInstanceStatus> instances = new LinkedHashMap<>();
+				for (final JsonNode instanceItem : ((JsonArray) jsonObject.get("instances")).items()) {
+					final TaskInstanceStatus instanceStatus = readTaskInstanceStatus(((JsonObject) instanceItem));
+					instances.put(instanceStatus.getTaskInstanceID(), instanceStatus);
+				}
+				status.setInstances(instances);
+
+				final Map<String, String> parametersMap = new LinkedHashMap<>();
+				for (final JsonNode parameterItem : ((JsonArray) jsonObject.get("parameters")).items()) {
+					final JsonObject taskParameterJsonObject = (JsonObject) parameterItem;
+					parametersMap.put((String) taskParameterJsonObject.getSimpleValue("name"), (String) taskParameterJsonObject.getSimpleValue("value"));
+				}
+				status.setParameters(parametersMap);
+
+				return status;
+			} else {
+				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode());
+			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
 		}
@@ -392,16 +474,7 @@ public class ArgoWfSchedulerClient {
 					throw new Exception("Invalid Task JSON data", e);
 				}
 
-				final JsonObject jsonObject = ((JsonObject) contentJson);
-				final TaskInstanceStatus status = new TaskInstanceStatus();
-				status.setTaskID((Integer) jsonObject.getSimpleValue("taskId"));
-				status.setTaskInstanceID((Integer) jsonObject.getSimpleValue("id"));
-				status.setWorkflowId((String) jsonObject.getSimpleValue("workflowId"));
-				status.setCreated(DateUtilities.parseZonedDateTime("yyyy-MM-dd'T'HH:mm:ss.SSSSSSX", (String) jsonObject.getSimpleValue("createdAt"), ZoneId.systemDefault()));
-				status.setUpdated(DateUtilities.parseZonedDateTime("yyyy-MM-dd'T'HH:mm:ss.SSSSSSX", (String) jsonObject.getSimpleValue("updatedAt"), ZoneId.systemDefault()));
-				status.setStatus((String) jsonObject.getSimpleValue("status"));
-				status.setLogMessage((String) jsonObject.getSimpleValue("message"));
-				return status;
+				return readTaskInstanceStatus(((JsonObject) contentJson));
 			} else {
 				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode());
 			}
@@ -409,53 +482,19 @@ public class ArgoWfSchedulerClient {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
 		}
 	}
-	public static ZonedDateTime getJwtTokenValidity(final String jwtToken) throws Exception {
-		try {
-			final String[] jwtParts = jwtToken.split("\\.");
 
-			if (jwtParts.length < 2) {
-				throw new Exception("Missing JSON data part in JWT token");
-			} else {
-				final String jwtPart = jwtParts[1];
-				String data;
-				try {
-					data = new String(Utilities.decodeBase64(jwtPart), StandardCharsets.UTF_8);
-				} catch (@SuppressWarnings("unused") final Exception e) {
-					data = null;
-				}
+	private static TaskInstanceStatus readTaskInstanceStatus(final JsonObject jsonObject) {
+		final TaskInstanceStatus status = new TaskInstanceStatus();
 
-				if (data == null) {
-					throw new Exception("Invalid JSON data in JWT token");
-				} else {
-					try {
-						final JsonNode jsonItem = Json5Reader.readJsonItemString(data);
-						if (jsonItem == null || !(jsonItem instanceof JsonObject)) {
-							throw new Exception("Invalid JSON data in JWT token");
-						} else {
-							final JsonObject dataJsonObject = (JsonObject) jsonItem;
-							final Object expireDateObject = dataJsonObject.getSimpleValue("exp");
-							// exp = Seconds since 1970-01-01T00:00:00Z (Not milliseconds !)
-							if (expireDateObject == null) {
-								return null;
-							} else if (expireDateObject instanceof Long) {
-								return ZonedDateTime.ofInstant(Instant.ofEpochMilli((Long) expireDateObject * 1000), ZoneId.of("UTC"));
-							} else if (expireDateObject instanceof Integer) {
-								return ZonedDateTime.ofInstant(Instant.ofEpochMilli((Integer) expireDateObject * 1000), ZoneId.of("UTC"));
-							} else if (expireDateObject instanceof String) {
-								final Long millisExpireDate = Long.parseLong((String) expireDateObject) * 1000;
-								return ZonedDateTime.ofInstant(Instant.ofEpochMilli(millisExpireDate), ZoneId.of("UTC"));
-							}
-						}
-					} catch (final Exception e) {
-						throw new Exception("Invalid JSON data in JWT token: " + e.getMessage(), e);
-					}
-				}
+		status.setTaskID((Integer) jsonObject.getSimpleValue("taskId"));
+		status.setTaskInstanceID((Integer) jsonObject.getSimpleValue("id"));
+		status.setWorkflowId((String) jsonObject.getSimpleValue("workflowId"));
+		status.setCreated(OffsetDateTime.parse((String) jsonObject.getSimpleValue("createdAt")).atZoneSameInstant(ZoneId.systemDefault()));
+		status.setUpdated(OffsetDateTime.parse((String) jsonObject.getSimpleValue("updatedAt")).atZoneSameInstant(ZoneId.systemDefault()));
+		status.setStatus((String) jsonObject.getSimpleValue("status"));
+		status.setLogMessage((String) jsonObject.getSimpleValue("message"));
 
-				return null;
-			}
-		} catch (final Exception e) {
-			throw new Exception("Invalid JWT token: " + e.getMessage(), e);
-		}
+		return status;
 	}
 }
 

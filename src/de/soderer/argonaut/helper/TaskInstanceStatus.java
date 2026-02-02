@@ -13,6 +13,7 @@ public class TaskInstanceStatus {
 	private ZonedDateTime updated;
 	private String status;
 	private String logMessage;
+	private TaskStatus taskStatus;
 
 	public Integer getTaskID() {
 		return taskID;
@@ -40,6 +41,7 @@ public class TaskInstanceStatus {
 		this.workflowId = workflowId;
 		return this;
 	}
+
 	public ZonedDateTime getCreated() {
 		return created;
 	}
@@ -74,6 +76,15 @@ public class TaskInstanceStatus {
 	public TaskInstanceStatus setLogMessage(final String logMessage) {
 		this.logMessage = logMessage;
 		return this;
+	}
+
+	public TaskInstanceStatus setTaskStatus(final TaskStatus taskStatus) {
+		this.taskStatus = taskStatus;
+		return this;
+	}
+
+	public TaskStatus getTaskStatus() {
+		return taskStatus;
 	}
 
 	@Override

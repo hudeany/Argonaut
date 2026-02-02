@@ -5,6 +5,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -36,17 +38,21 @@ import org.eclipse.swt.widgets.Text;
 import de.soderer.argonaut.Argonaut;
 import de.soderer.argonaut.ServerConfiguration;
 import de.soderer.argonaut.helper.ArgoWfSchedulerClient;
+import de.soderer.argonaut.helper.TaskInstanceStatus;
+import de.soderer.argonaut.helper.TaskStatus;
 import de.soderer.argonaut.image.ImageManager;
 import de.soderer.json.JsonArray;
 import de.soderer.json.JsonNode;
 import de.soderer.json.JsonObject;
 import de.soderer.json.JsonReader;
 import de.soderer.json.JsonWriter;
+import de.soderer.json.utilities.Tuple;
 import de.soderer.network.NetworkUtilities;
 import de.soderer.pac.utilities.ProxyConfiguration;
 import de.soderer.pac.utilities.ProxyConfiguration.ProxyConfigurationType;
 import de.soderer.utilities.ConfigurationProperties;
 import de.soderer.utilities.Credentials;
+import de.soderer.utilities.DateUtilities;
 import de.soderer.utilities.IoUtilities;
 import de.soderer.utilities.LangResources;
 import de.soderer.utilities.Utilities;
@@ -78,6 +84,12 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 	private ScrolledComposite scrolledPart;
 	private Map<String, Text> parametersTextFields;
 	private Table taskInstancesTable;
+	private int columnTaskIdIndex;
+	private int columnInstanceIdIndex;
+	private int columnTaskNameIndex;
+	private int columnStartIndex;
+	private int columnStatusIndex;
+
 	private Listener currentFillDataListener;
 	private Listener columnSortListener;
 
@@ -90,6 +102,11 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 	private final ConfigurationProperties applicationConfiguration;
 	private Map<String, ServerConfiguration> serverConfigurations = new LinkedHashMap<>();
+
+	private String currentServerSelection = null;
+	private String currentWorkflowTemplateName = null;
+	private List<TaskInstanceStatus> listOfTaskInstanceStatus = new ArrayList<>();
+	private TaskInstanceStatus currentTaskInstanceStatus = null;
 
 	public ArgonautDialog(final Display display, final ConfigurationProperties applicationConfiguration) throws Exception {
 		super(display, Argonaut.APPLICATION_NAME, Argonaut.VERSION, Argonaut.KEYSTORE_FILE);
@@ -226,12 +243,23 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		serverSelectioncombo.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(final SelectionEvent arg0) {
-				configureArgoWfSchedulerClient();
+				PleaseWaitDialog pleaseWaitDialog = null;
+				try {
+					pleaseWaitDialog = new PleaseWaitDialog(getShell(), Argonaut.APPLICATION_NAME);
+					pleaseWaitDialog.open();
 
-				loadWorflowTemplates();
-				fillParametersPart(null, false);
+					currentServerSelection = ((Combo) arg0.getSource()).getText();
+					configureArgoWfSchedulerClient();
 
-				checkButtonStatus();
+					loadWorflowTemplates();
+					fillParametersPart(null, false);
+
+					checkButtonStatus();
+				} finally {
+					if (pleaseWaitDialog != null) {
+						pleaseWaitDialog.hide();
+					}
+				}
 			}
 		});
 
@@ -286,11 +314,11 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 			@Override
 			public void widgetSelected(final SelectionEvent ev) {
 				try {
-					if (Utilities.isNotBlank(serverSelectioncombo.getText())) {
-						final QuestionDialog dialog = new QuestionDialog(getShell(), Argonaut.APPLICATION_NAME, LangResources.get("reallyRemoveServer", serverSelectioncombo.getText()), LangResources.get("yes"), LangResources.get("no"));
+					if (Utilities.isNotBlank(currentServerSelection)) {
+						final QuestionDialog dialog = new QuestionDialog(getShell(), Argonaut.APPLICATION_NAME, LangResources.get("reallyRemoveServer", currentServerSelection), LangResources.get("yes"), LangResources.get("no"));
 						final Integer result = dialog.open();
 						if (result == 0) {
-							serverConfigurations.remove(serverSelectioncombo.getText());
+							serverConfigurations.remove(currentServerSelection);
 							saveConfiguration();
 							serverSelectioncombo.setItems(serverConfigurations.keySet().toArray(new String[0]));
 							serverSelectioncombo.setText("");
@@ -312,8 +340,8 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 			@Override
 			public void widgetSelected(final SelectionEvent ev) {
 				try {
-					if (Utilities.isNotBlank(serverSelectioncombo.getText()) && serverConfigurations.containsKey(serverSelectioncombo.getText())) {
-						final ServerConfiguration serverConfiguration = serverConfigurations.get(serverSelectioncombo.getText());
+					if (Utilities.isNotBlank(currentServerSelection) && serverConfigurations.containsKey(currentServerSelection)) {
+						final ServerConfiguration serverConfiguration = serverConfigurations.get(currentServerSelection);
 						final String[] serverItems = new String[] {
 								LangResources.get("displayName"),
 								LangResources.get("idpUrl"),
@@ -368,10 +396,22 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		workflowTemplateCombo.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(final SelectionEvent arg0) {
-				loadTaskParameters();
-				//				loadTaskInstances(); // TODO
+				PleaseWaitDialog pleaseWaitDialog = null;
+				try {
+					pleaseWaitDialog = new PleaseWaitDialog(getShell(), Argonaut.APPLICATION_NAME);
+					pleaseWaitDialog.open();
 
-				checkButtonStatus();
+					currentWorkflowTemplateName = ((Combo) arg0.getSource()).getText();
+
+					setupTable();
+					loadTaskParameters();
+
+					checkButtonStatus();
+				} finally {
+					if (pleaseWaitDialog != null) {
+						pleaseWaitDialog.hide();
+					}
+				}
 			}
 		});
 
@@ -380,10 +420,10 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		taskInstancesBox.setLayout(SwtUtilities.createSmallMarginGridLayout(1, false));
 		taskInstancesBox.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 7, 1));
 
-		final Label propertiesTableLabel = new Label(taskInstancesBox, SWT.NONE);
-		propertiesTableLabel.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, true, false, 1, 1));
-		propertiesTableLabel.setText("Executed task instances");
-		propertiesTableLabel.setFont(new Font(getDisplay(), "Arial", 10, SWT.None));
+		final Label taskInstancesTableLabel = new Label(taskInstancesBox, SWT.NONE);
+		taskInstancesTableLabel.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, true, false, 1, 1));
+		taskInstancesTableLabel.setText("Executed task instances");
+		taskInstancesTableLabel.setFont(new Font(getDisplay(), "Arial", 10, SWT.None));
 
 		taskInstancesTable = new Table(taskInstancesBox, SWT.BORDER | SWT.MULTI | SWT.FULL_SELECTION | SWT.VIRTUAL);
 		taskInstancesTable.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
@@ -398,37 +438,45 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		column.setWidth(0);
 		column.setText(LangResources.get("columnheader_dummy"));
 
-		final TableColumn columnId = new TableColumn(taskInstancesTable, SWT.RIGHT);
-		columnId.setMoveable(false);
-		columnId.setWidth(25);
-		columnId.setText(LangResources.get("columnheader_id"));
+		final TableColumn columnTaskId = new TableColumn(taskInstancesTable, SWT.RIGHT);
+		columnTaskId.setMoveable(false);
+		columnTaskId.setWidth(40);
+		columnTaskIdIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnTaskId);
+		columnTaskId.setText(LangResources.get("columnheader_taskid"));
 
-		final TableColumn columnName = new TableColumn(taskInstancesTable, SWT.LEFT);
-		columnName.setMoveable(true);
-		columnName.setWidth(200);
-		columnName.setText(LangResources.get("columnheader_name"));
-		final int columnNameIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnName);
-		columnName.addListener(SWT.Selection, columnSortListener);
+		final TableColumn columnInstanceId = new TableColumn(taskInstancesTable, SWT.RIGHT);
+		columnInstanceId.setMoveable(true);
+		columnInstanceId.setWidth(40);
+		columnInstanceId.setText(LangResources.get("columnheader_instanceid"));
+		columnInstanceIdIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnInstanceId);
+		columnInstanceId.addListener(SWT.Selection, columnSortListener);
+
+		final TableColumn columnTaskName = new TableColumn(taskInstancesTable, SWT.LEFT);
+		columnTaskName.setMoveable(true);
+		columnTaskName.setWidth(175);
+		columnTaskName.setText(LangResources.get("columnheader_name"));
+		columnTaskNameIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnTaskName);
+		columnTaskName.addListener(SWT.Selection, columnSortListener);
 
 		final TableColumn columnStart = new TableColumn(taskInstancesTable, SWT.LEFT);
 		columnStart.setMoveable(true);
-		columnStart.setWidth(150);
+		columnStart.setWidth(100);
 		columnStart.setText(LangResources.get("columnheader_start"));
-		final int columnStartIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnStart);
+		columnStartIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnStart);
 		columnStart.addListener(SWT.Selection, columnSortListener);
 
 		final TableColumn columnSatus = new TableColumn(taskInstancesTable, SWT.LEFT);
 		columnSatus.setMoveable(true);
 		columnSatus.setWidth(150);
 		columnSatus.setText(LangResources.get("columnheader_status"));
-		final int columnStatusIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnSatus);
+		columnStatusIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnSatus);
 		columnSatus.addListener(SWT.Selection, columnSortListener);
 	}
 
 	protected void configureArgoWfSchedulerClient() {
 		try {
-			if (Utilities.isNotBlank(serverSelectioncombo.getText())) {
-				final ServerConfiguration serverConfiguration = serverConfigurations.get(serverSelectioncombo.getText());
+			if (Utilities.isNotBlank(currentServerSelection)) {
+				final ServerConfiguration serverConfiguration = serverConfigurations.get(currentServerSelection);
 				String clientSecret = serverConfiguration.getClientSecret();
 				if (Utilities.isEmpty(serverConfiguration.getClientSecret())) {
 					final CredentialsDialog dialog = new CredentialsDialog(getShell(),
@@ -488,7 +536,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		Map<String, String> taskParameters = null;
 		try {
 			if (argoWfSchedulerClient != null) {
-				taskParameters = argoWfSchedulerClient.getWorkflowTemplateParameters(workflowTemplateCombo.getText());
+				taskParameters = argoWfSchedulerClient.getWorkflowTemplateParameters(currentWorkflowTemplateName);
 			}
 		} catch (final Exception e) {
 			showErrorMessage(LangResources.get("loadTaskParameters"), "Cannot load task parameters: " + e.getMessage());
@@ -500,64 +548,74 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 	}
 
 	private void setupTable() {
-		if (currentFillDataListener != null) {
-			taskInstancesTable.removeListener(SWT.SetData, currentFillDataListener);
-			currentFillDataListener = null;
-			taskInstancesTable.setItemCount(0);
-		}
-		taskInstancesTable.clearAll();
-		for (final TableColumn column : taskInstancesTable.getColumns()) {
-			if (!column.getText().equals(LangResources.get("columnheader_dummy"))
-					&& !column.getText().equals(LangResources.get("columnheader_id"))
-					&& !column.getText().equals(LangResources.get("columnheader_name"))
-					&& !column.getText().equals(LangResources.get("columnheader_status"))) {
-				column.dispose();
+		try {
+			if (currentFillDataListener != null) {
+				taskInstancesTable.removeListener(SWT.SetData, currentFillDataListener);
+				currentFillDataListener = null;
+				taskInstancesTable.setItemCount(0);
 			}
-		}
 
-		// TODO
-		//		if (languageProperties != null) {
-		//			for (final String sign : availableLanguageSigns) {
-		//				final TableColumn column = new TableColumn(taskInstancesTable, SWT.CENTER);
-		//				column.setMoveable(true);
-		//				column.setWidth(sign.length() > 3 ? 50 : 25);
-		//				if (sign.equals(LanguagePropertiesFileSetReader.LANGUAGE_SIGN_DEFAULT)) {
-		//					column.setText(LangResources.get("columnheader_default"));
-		//				}
-		//				else column.setText(sign);
-		//				column.addListener(SWT.Selection, columnSortListener);
-		//			}
-		//
-		//			currentFillDataListener = new FillDataListener();
-		//			taskInstancesTable.addListener(SWT.SetData, currentFillDataListener);
-		//
-		//			taskInstancesTable.setItemCount(languageProperties.size());
-		//
-		//			taskInstancesTable.setSortColumn(taskInstancesTable.getColumn(1));
-		//			taskInstancesTable.setSortDirection(SWT.UP);
-		//
-		//			for (final Control field : parametersPart.getChildren()) {
-		//				field.dispose();
-		//			}
-		//
-		//			for (final String sign : availableLanguageSigns) {
-		//				final Label languageLabel = new Label(parametersPart, SWT.NONE);
-		//				if (LanguagePropertiesFileSetReader.LANGUAGE_SIGN_DEFAULT.equals(sign)) {
-		//					languageLabel.setText(LangResources.get("columnheader_default") + ":");
-		//				} else {
-		//					languageLabel.setText(sign + ":");
-		//				}
-		//				final Text languageTextfield = new Text(parametersPart, SWT.BORDER);
-		//				languageTextfield.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false, 1, 1));
-		//				languageTextfield.addModifyListener(new DetailModifyListener());
-		//				languageTextFields.put(sign, languageTextfield);
-		//			}
-		//		} else {
-		//			for (final Control field : parametersPart.getChildren()) {
-		//				field.dispose();
-		//			}
-		//		}
-		parametersPart.layout();
+			taskInstancesTable.clearAll();
+			for (final TableColumn column : taskInstancesTable.getColumns()) {
+				if (!column.getText().equals(LangResources.get("columnheader_dummy"))
+						&& !column.getText().equals(LangResources.get("columnheader_taskid"))
+						&& !column.getText().equals(LangResources.get("columnheader_instanceid"))
+						&& !column.getText().equals(LangResources.get("columnheader_name"))
+						&& !column.getText().equals(LangResources.get("columnheader_start"))
+						&& !column.getText().equals(LangResources.get("columnheader_status"))) {
+					column.dispose();
+				}
+			}
+
+			listOfTaskInstanceStatus = new ArrayList<>();
+			currentTaskInstanceStatus = null;
+			final List<Integer> taskIds = argoWfSchedulerClient.getWorkflowTemplateTaskIds(currentWorkflowTemplateName);
+			for (final Integer taskID : taskIds) {
+				final TaskStatus taskStatus = argoWfSchedulerClient.getTaskStatus(taskID);
+				for (final TaskInstanceStatus instanceStatus : taskStatus.getInstances().values()) {
+					instanceStatus.setTaskStatus(taskStatus);
+					listOfTaskInstanceStatus.add(instanceStatus);
+				}
+			}
+
+			currentFillDataListener = new FillDataListener();
+			taskInstancesTable.addListener(SWT.SetData, currentFillDataListener);
+
+			taskInstancesTable.setItemCount(listOfTaskInstanceStatus.size());
+
+			taskInstancesTable.setSortColumn(taskInstancesTable.getColumn(1));
+			taskInstancesTable.setSortDirection(SWT.UP);
+
+			for (final Control field : parametersPart.getChildren()) {
+				field.dispose();
+			}
+
+			parametersPart.layout();
+
+			checkButtonStatus();
+		} catch (final Exception e) {
+			showErrorMessage(LangResources.get("startTask"), "Cannot show task in table: " + e.getMessage());
+		}
+	}
+
+	private class FillDataListener implements Listener {
+		@Override
+		public void handleEvent(final Event event) {
+			final TableItem item = (TableItem) event.item;
+			final int index = taskInstancesTable.indexOf(item);
+			fillPropertyDataInTableItem(index, item);
+		}
+	}
+
+	public void fillPropertyDataInTableItem(final int index, final TableItem item) {
+		final TaskInstanceStatus taskInstanceStatus = listOfTaskInstanceStatus.get(index);
+		// 0 = DummyColumn
+		item.setText(columnTaskIdIndex, Integer.toString(index + 1));
+		item.setText(columnInstanceIdIndex, Integer.toString(taskInstanceStatus.getTaskInstanceID()));
+		item.setText(columnTaskNameIndex, taskInstanceStatus.getWorkflowId());
+		final String start = DateUtilities.formatDate(DateUtilities.ISO_8601_DATETIME_FORMAT_NO_TIMEZONE, taskInstanceStatus.getUpdated().withZoneSameInstant(ZoneId.systemDefault()));
+		item.setText(columnStartIndex, start);
+		item.setText(columnStatusIndex, taskInstanceStatus.getStatus());
 	}
 
 	private void createRightPart(final SashForm parent) throws Exception {
@@ -601,7 +659,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		showLogDataButton.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(final SelectionEvent e) {
-				// TODO
+				showData(LangResources.get("showLogData"), currentTaskInstanceStatus.getLogMessage());
 			}
 		});
 
@@ -611,27 +669,46 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		startTaskButton.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(final SelectionEvent ev) {
-				int taskID;
+				PleaseWaitDialog pleaseWaitDialog = null;
 				try {
-					final Map<String, String> parameters = new LinkedHashMap<>();
-					for (final Entry<String, Text> parameterTextFieldEntry : parametersTextFields.entrySet()) {
-						parameters.put(parameterTextFieldEntry.getKey(), parameterTextFieldEntry.getValue().getText());
+					pleaseWaitDialog = new PleaseWaitDialog(getShell(), Argonaut.APPLICATION_NAME);
+					pleaseWaitDialog.open();
+
+					if (currentTaskInstanceStatus == null) {
+						int taskID;
+						try {
+							final Map<String, String> parameters = new LinkedHashMap<>();
+							for (final Entry<String, Text> parameterTextFieldEntry : parametersTextFields.entrySet()) {
+								parameters.put(parameterTextFieldEntry.getKey(), parameterTextFieldEntry.getValue().getText());
+							}
+							taskID = argoWfSchedulerClient.createTask(currentWorkflowTemplateName, parameters, true);
+						} catch (final Exception e) {
+							showErrorMessage(LangResources.get("startTask"), "Cannot create new task: " + e.getMessage());
+							return;
+						}
+
+						try {
+							argoWfSchedulerClient.startTask(taskID);
+						} catch (final Exception e) {
+							showErrorMessage(LangResources.get("startTask"), "Cannot start newly created task: " + e.getMessage());
+						}
+
+						pleaseWaitDialog.hide();
+						pleaseWaitDialog = null;
+
+						showMessage(LangResources.get("startTask"), LangResources.get("startedTask", taskID));
+					} else {
+						currentTaskInstanceStatus = null;
+
+						loadTaskParameters();
+
+						checkButtonStatus();
 					}
-					taskID = argoWfSchedulerClient.createTask(workflowTemplateCombo.getText(), parameters, true);
-				} catch (final Exception e) {
-					showErrorMessage(LangResources.get("startTask"), "Cannot create new task: " + e.getMessage());
-					return;
+				} finally {
+					if (pleaseWaitDialog != null) {
+						pleaseWaitDialog.hide();
+					}
 				}
-
-				try {
-					argoWfSchedulerClient.startTask(taskID);
-				} catch (final Exception e) {
-					showErrorMessage(LangResources.get("startTask"), "Cannot start newly created task: " + e.getMessage());
-				}
-
-				showMessage(LangResources.get("startTask"), LangResources.get("startedTask", taskID));
-
-				fillTaskInstancesTable();
 			}
 		});
 
@@ -651,24 +728,22 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 	private class TableItemSelectionListener extends SelectionAdapter {
 		@Override
 		public void widgetSelected(final SelectionEvent e) {
-			// TODO
-			//			technicalDataChange = true;
-			//			if (!dataWasModified || askForDiscardChanges()) {
-			//				// make a new selection
-			//				refreshDetailView();
-			//				currentSelectedKeys = getSelectedKeys();
-			//			} else {
-			//				// reselect old entry
-			//				taskInstancesTable.deselectAll();
-			//				for (int i = 0; i < languageProperties.size(); i++) {
-			//					final LanguageProperty languageProperty = languageProperties.get(i);
-			//					if (languageProperty.getPath().equals(currentSelectedKeys.get(0).getFirst()) && languageProperty.getKey().equals(currentSelectedKeys.get(0).getSecond())) {
-			//						taskInstancesTable.select(i);
-			//						break;
-			//					}
-			//				}
-			//			}
-			//			technicalDataChange = false;
+			final List<Tuple<String, String>> selectedItems = getSelectedKeys();
+
+			if (selectedItems.size() > 0) {
+				final Tuple<String, String> selectedItem = selectedItems.get(0);
+				currentTaskInstanceStatus = null;
+				for (final TaskInstanceStatus instanceStatus : listOfTaskInstanceStatus) {
+					if (instanceStatus.getTaskID().equals(Integer.parseInt(selectedItem.getFirst())) && instanceStatus.getTaskInstanceID().equals(Integer.parseInt(selectedItem.getSecond()))) {
+						currentTaskInstanceStatus = instanceStatus;
+						break;
+					}
+				}
+
+				if (currentTaskInstanceStatus != null) {
+					fillParametersPart(currentTaskInstanceStatus.getTaskStatus().getParameters(), true);
+				}
+			}
 
 			checkButtonStatus();
 		}
@@ -678,6 +753,8 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		for (final Control field : parametersPart.getChildren()) {
 			field.dispose();
 		}
+
+		parametersTextFields = new LinkedHashMap<>();
 
 		if (taskParameters != null) {
 			for (final Entry<String, String> parametersEntry : taskParameters.entrySet()) {
@@ -692,10 +769,6 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		}
 		scrolledPart.layout();
 		parametersPart.layout();
-	}
-
-	private void fillTaskInstancesTable() {
-		// TODO
 	}
 
 	private class ConfigButtonSelectionListener extends SelectionAdapter {
@@ -734,11 +807,11 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 	public void checkButtonStatus() {
 		if (removeServerButton != null) {
-			removeServerButton.setEnabled(Utilities.isNotBlank(serverSelectioncombo.getText()));
+			removeServerButton.setEnabled(Utilities.isNotBlank(currentServerSelection));
 		}
 
 		if (editServerButton != null) {
-			editServerButton.setEnabled(Utilities.isNotBlank(serverSelectioncombo.getText()));
+			editServerButton.setEnabled(Utilities.isNotBlank(currentServerSelection));
 		}
 
 		if (workflowTemplateCombo != null) {
@@ -746,11 +819,22 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		}
 
 		if (startTaskButton != null) {
-			startTaskButton.setEnabled(Utilities.isNotBlank(workflowTemplateCombo.getText()));
+			if (currentTaskInstanceStatus == null) {
+				startTaskButton.setText(LangResources.get("startTask"));
+			} else {
+				startTaskButton.setText(LangResources.get("prepareTask"));
+			}
+			startTaskButton.setEnabled(Utilities.isNotBlank(currentWorkflowTemplateName));
 		}
+
+
 
 		if (taskInstancesTable != null) {
 			taskInstancesTable.setEnabled(taskInstancesTable.getItemCount() > 0);
+		}
+
+		if (showLogDataButton != null) {
+			showLogDataButton.setEnabled(currentTaskInstanceStatus != null);
 		}
 	}
 
@@ -763,53 +847,9 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 	private class ColumnSortListener implements Listener {
 		@Override
 		public void handleEvent(final Event event) {
-			//			final TableColumn columnToSort = (TableColumn) event.widget;
-			//			final Table table = columnToSort.getParent();
-			//			if (columnToSort == table.getSortColumn()) {
-			//				if (table.getSortDirection() == SWT.UP) {
-			//					table.setSortDirection(SWT.DOWN);
-			//				} else {
-			//					table.setSortDirection(SWT.UP);
-			//				}
-			//			} else {
-			//				table.setSortDirection(SWT.UP);
-			//			}
-			//			table.setSortColumn(columnToSort);
-			//
-			//			if (columnToSort.getText().equals(LangResources.get("columnheader_key"))) {
-			//				final Comparator<LanguageProperty> compareByName = Comparator.comparing(LanguageProperty::getPath).thenComparing(LanguageProperty::getKey);
-			//				if (table.getSortDirection() == SWT.UP) {
-			//					languageProperties = languageProperties.stream().sorted(compareByName).collect(Collectors.toList());
-			//				} else {
-			//					languageProperties = languageProperties.stream().sorted(compareByName.reversed()).collect(Collectors.toList());
-			//				}
-			//			} else if (columnToSort.getText().equals(LangResources.get("columnheader_original_index")) || columnToSort.getText().equals(LangResources.get("columnheader_path"))) {
-			//				final Comparator<LanguageProperty> compareByIndex = Comparator.comparing(LanguageProperty::getPath).thenComparing(LanguageProperty::getOriginalIndex);
-			//				if (table.getSortDirection() == SWT.UP) {
-			//					languageProperties = languageProperties.stream().sorted(compareByIndex).collect(Collectors.toList());
-			//				} else {
-			//					languageProperties = languageProperties.stream().sorted(compareByIndex.reversed()).collect(Collectors.toList());
-			//				}
-			//			} else if (columnToSort.getText().equals(LangResources.get("columnheader_default"))) {
-			//				if (table.getSortDirection() == SWT.UP) {
-			//					languageProperties = languageProperties.stream().sorted((o1, o2) -> (getEmptyForNull(o1.getLanguageValue(LanguagePropertiesFileSetReader.LANGUAGE_SIGN_DEFAULT))).compareTo(getEmptyForNull(o2.getLanguageValue(LanguagePropertiesFileSetReader.LANGUAGE_SIGN_DEFAULT)))).collect(Collectors.toList());
-			//				} else {
-			//					languageProperties = languageProperties.stream().sorted((o1, o2) -> (getEmptyForNull(o1.getLanguageValue(LanguagePropertiesFileSetReader.LANGUAGE_SIGN_DEFAULT))).compareTo(getEmptyForNull(o2.getLanguageValue(LanguagePropertiesFileSetReader.LANGUAGE_SIGN_DEFAULT))) * -1).collect(Collectors.toList());
-			//				}
-			//			} else {
-			//				if (table.getSortDirection() == SWT.UP) {
-			//					languageProperties = languageProperties.stream().sorted((o1, o2) -> (getEmptyForNull(o1.getLanguageValue(columnToSort.getText()))).compareTo(getEmptyForNull(o2.getLanguageValue(columnToSort.getText())))).collect(Collectors.toList());
-			//				} else {
-			//					languageProperties = languageProperties.stream().sorted((o1, o2) -> (getEmptyForNull(o1.getLanguageValue(columnToSort.getText()))).compareTo(getEmptyForNull(o2.getLanguageValue(columnToSort.getText()))) * -1).collect(Collectors.toList());
-			//				}
-			//			}
 
 			refreshTable();
 		}
-	}
-
-	private static String getEmptyForNull(final String string) {
-		return string == null ? "" : string;
 	}
 
 	private void refreshTable() {
@@ -818,30 +858,15 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		taskInstancesTable.setRedraw(false);
 		taskInstancesTable.clearAll();
 		taskInstancesTable.setRedraw(true);
-
-		//		if (currentSelectedKeys != null && currentSelectedKeys.size() > 0) {
-		//			final int[] indices = new int[currentSelectedKeys.size()];
-		//			for (int i = 0; i < currentSelectedKeys.size(); i++) {
-		//				for (int searchIndex = 0; i < languageProperties.size(); searchIndex++) {
-		//					final LanguageProperty languageProperty = languageProperties.get(searchIndex);
-		//					if (languageProperty.getPath().equals(currentSelectedKeys.get(i).getFirst()) && languageProperty.getKey().equals(currentSelectedKeys.get(i).getSecond())) {
-		//						indices[i] = searchIndex;
-		//						break;
-		//					}
-		//				}
-		//			}
-		//			taskInstancesTable.setSelection(indices);
-		//			taskInstancesTable.showSelection();
-		//		}
 	}
 
-	//	private List<Tuple<String, String>> getSelectedKeys() {
-	//		final List<Tuple<String, String>> returnList = new ArrayList<>();
-	//		for (final TableItem item : taskInstancesTable.getSelection()) {
-	//			returnList.add(new Tuple<>(item.getText(columnPathIndex), item.getText(columnKeyIndex)));
-	//		}
-	//		return returnList;
-	//	}
+	private List<Tuple<String, String>> getSelectedKeys() {
+		final List<Tuple<String, String>> returnList = new ArrayList<>();
+		for (final TableItem item : taskInstancesTable.getSelection()) {
+			returnList.add(new Tuple<>(item.getText(1), item.getText(2)));
+		}
+		return returnList;
+	}
 
 	public static String[] getTextValues(final TableItem item) {
 		final String[] returnValue = new String[item.getParent().getColumnCount()];
