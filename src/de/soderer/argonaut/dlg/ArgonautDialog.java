@@ -78,6 +78,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 	private Combo serverSelectioncombo;
 	private Button removeServerButton;
 	private Button editServerButton;
+	private Button reloadButton;
 
 	private Composite rightPart = null;
 	private Composite parametersPart;
@@ -382,16 +383,16 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 		// Workflow template selection
 		workflowTemplateBox = new Composite(leftPart, SWT.BORDER);
-		workflowTemplateBox.setLayout(SwtUtilities.createSmallMarginGridLayout(4, false));
+		workflowTemplateBox.setLayout(SwtUtilities.createSmallMarginGridLayout(2, false));
 		workflowTemplateBox.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false, 1, 1));
 
 		final Label workflowTemplateLabel = new Label(workflowTemplateBox, SWT.NONE);
 		workflowTemplateLabel.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, true, false, 10, 1));
-		workflowTemplateLabel.setText("Workflow template");
+		workflowTemplateLabel.setText(LangResources.get("workflowTemplate"));
 		workflowTemplateLabel.setFont(new Font(getDisplay(), "Arial", 10, SWT.None));
 
 		workflowTemplateCombo = new Combo(workflowTemplateBox, SWT.DROP_DOWN);
-		workflowTemplateCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, true, 4, 1));
+		workflowTemplateCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, true, 1, 1));
 
 		SwtUtilities.addAutoCompleteFeature(workflowTemplateCombo);
 		workflowTemplateCombo.addSelectionListener(new SelectionAdapter() {
@@ -416,6 +417,38 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 			}
 		});
 
+		reloadButton = new Button(workflowTemplateBox, SWT.PUSH);
+		reloadButton.setImage(ImageManager.getImage("reload.png"));
+		reloadButton.setToolTipText(LangResources.get("reloadTaskInstances"));
+		reloadButton.setLayoutData(new GridData(25, 25));
+		reloadButton.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(final SelectionEvent ev) {
+				try {
+					if (Utilities.isNotBlank(currentWorkflowTemplateName)) {
+						PleaseWaitDialog pleaseWaitDialog = null;
+						try {
+							pleaseWaitDialog = new PleaseWaitDialog(getShell(), Argonaut.APPLICATION_NAME);
+							pleaseWaitDialog.open();
+
+							setupTable();
+							loadTaskParameters();
+
+							checkButtonStatus();
+						} finally {
+							if (pleaseWaitDialog != null) {
+								pleaseWaitDialog.hide();
+							}
+						}
+
+						checkButtonStatus();
+					}
+				} catch (final Exception e) {
+					showErrorMessage(LangResources.get("reloadTaskInstances"), "Cannot reload task instances: " + e.getMessage());
+				}
+			}
+		});
+
 		// Task selection
 		final Composite taskInstancesBox = new Composite(leftPart, SWT.BORDER);
 		taskInstancesBox.setLayout(SwtUtilities.createSmallMarginGridLayout(1, false));
@@ -423,7 +456,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 		final Label taskInstancesTableLabel = new Label(taskInstancesBox, SWT.NONE);
 		taskInstancesTableLabel.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, true, false, 1, 1));
-		taskInstancesTableLabel.setText("Executed task instances");
+		taskInstancesTableLabel.setText(LangResources.get("executedTaskInstances"));
 		taskInstancesTableLabel.setFont(new Font(getDisplay(), "Arial", 10, SWT.None));
 
 		taskInstancesTable = new Table(taskInstancesBox, SWT.BORDER | SWT.MULTI | SWT.FULL_SELECTION | SWT.VIRTUAL);
@@ -626,7 +659,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 		final Label parametersLabel = new Label(rightPart, SWT.NONE);
 		parametersLabel.setLayoutData(new GridData(SWT.LEFT, SWT.UP, true, false, 1, 1));
-		parametersLabel.setText("Parameters");
+		parametersLabel.setText(LangResources.get("parameters"));
 		parametersLabel.setFont(new Font(getDisplay(), "Arial", 10, SWT.None));
 
 		final Composite parametersRegion = new Composite(rightPart, SWT.NONE);
@@ -837,6 +870,10 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 		if (showLogDataButton != null) {
 			showLogDataButton.setEnabled(currentTaskInstanceStatus != null && currentTaskInstanceStatus.getLogMessage() != null);
+		}
+
+		if (reloadButton != null) {
+			reloadButton.setEnabled(Utilities.isNotEmpty(workflowTemplateCombo.getText()));
 		}
 	}
 
