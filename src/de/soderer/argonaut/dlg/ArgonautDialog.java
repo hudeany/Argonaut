@@ -329,7 +329,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 						checkButtonStatus();
 					}
 				} catch (final Exception e) {
-					showErrorMessage(LangResources.get("addServer"), "Cannot add server: " + e.getMessage());
+					showErrorMessage(LangResources.get("removeServer"), "Cannot remove server: " + e.getMessage());
 				}
 			}
 		});
@@ -351,7 +351,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 								LangResources.get("argoWfSchedulerBaseUrl"),
 								LangResources.get("clientID"),
 								LangResources.get("clientSecret")};
-						final MultiInputDialog dialog = new MultiInputDialog(getShell(), Argonaut.APPLICATION_NAME, LangResources.get("addServer"), serverItems);
+						final MultiInputDialog dialog = new MultiInputDialog(getShell(), Argonaut.APPLICATION_NAME, LangResources.get("editServer"), serverItems);
 						dialog.setWidth(300);
 						dialog.setDefaultTexts(new String[] {
 								serverConfiguration.getDisplayName(),
