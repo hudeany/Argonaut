@@ -228,40 +228,6 @@ public class ArgoWfSchedulerClient {
 		}
 	}
 
-	public List<JsonObject> getTaskLog(final int taskID) throws Exception {
-		try {
-			final String accessToken = aquireAccessTokenByClientId();
-
-			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID + "/log");
-			request.addHeader("Authorization", "Bearer " + accessToken);
-			request.addHeader("accept", "application/json");
-
-			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
-			if (response.getHttpCode() == 200) {
-				JsonNode contentJson;
-				try {
-					contentJson = JsonReader.readJsonItemString(response.getContent());
-				} catch (final Exception e) {
-					throw new Exception("Invalid Tasks JSON data", e);
-				}
-
-				final JsonArray jsonArray = ((JsonArray) contentJson);
-				final List<JsonObject> returnList = new ArrayList<>();
-				for (final Object logItemObject : jsonArray.simpleItems()) {
-					final JsonObject logItemJsonObject = (JsonObject) logItemObject;
-					final String logContentString = (String) logItemJsonObject.getSimpleValue("content");
-					final JsonObject logContent = (JsonObject) JsonReader.readJsonItemString(logContentString);
-					returnList.add(logContent);
-				}
-				return returnList;
-			} else {
-				throw new Exception("getAllTasks failed. Http Code: " + response.getHttpCode());
-			}
-		} catch (final UnknownHostException e) {
-			throw new Exception("UnknownHost '" + e.getMessage() + "'");
-		}
-	}
-
 	public void startTask(final int taskID) throws Exception {
 		try {
 			final String accessToken = aquireAccessTokenByClientId();
@@ -271,52 +237,8 @@ public class ArgoWfSchedulerClient {
 			request.addHeader("accept", "application/json");
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
-			if (response.getHttpCode() == 200) {
-				//			JsonNode contentJson;
-				//			try {
-				//				contentJson = JsonReader.readJsonItemString(response.getContent());
-				//			} catch (Exception e) {
-				//				throw new Exception("Invalid Task JSON data");
-				//			}
-				//
-				//			JsonObject jsonObject = ((JsonObject) contentJson.getValue());
-			} else {
+			if (response.getHttpCode() != 200) {
 				throw new Exception("startTask failed. Http Code: " + response.getHttpCode());
-			}
-		} catch (final UnknownHostException e) {
-			throw new Exception("UnknownHost '" + e.getMessage() + "'");
-		}
-	}
-
-	public Map<Integer, TaskInstanceStatus> getStatusOfTaskInstances(final int taskID) throws Exception {
-		try {
-			final String accessToken = aquireAccessTokenByClientId();
-
-			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID);
-			request.addHeader("Authorization", "Bearer " + accessToken);
-			request.addHeader("accept", "application/json");
-
-			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
-			if (response.getHttpCode() == 200) {
-				JsonNode contentJson;
-				try {
-					contentJson = JsonReader.readJsonItemString(response.getContent());
-				} catch (final Exception e) {
-					throw new Exception("Invalid Task JSON data", e);
-				}
-
-				final JsonObject jsonObject = ((JsonObject) contentJson);
-				final JsonArray taskInstances = (JsonArray) jsonObject.get("instances");
-
-				final Map<Integer, TaskInstanceStatus> returnMap = new LinkedHashMap<>();
-				for (final Object taskInstanceObject : taskInstances) {
-					final JsonObject taskInstanceJsonObject = (JsonObject) taskInstanceObject;
-					returnMap.put((Integer) taskInstanceJsonObject.getSimpleValue("id"), getTaskInstanceStatus((Integer) taskInstanceJsonObject.getSimpleValue("id")));
-				}
-
-				return returnMap;
-			} else {
-				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode());
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -435,7 +357,13 @@ public class ArgoWfSchedulerClient {
 
 				final Map<Integer, TaskInstanceStatus> instances = new LinkedHashMap<>();
 				for (final JsonNode instanceItem : ((JsonArray) jsonObject.get("instances")).items()) {
-					final TaskInstanceStatus instanceStatus = readTaskInstanceStatus(((JsonObject) instanceItem));
+					TaskInstanceStatus instanceStatus = readTaskInstanceStatus(((JsonObject) instanceItem));
+
+					if (instanceStatus.getStatus().equals("PENDING") || instanceStatus.getStatus().equals("RUNNING")) {
+						// Workaround for missing status updates in GET /tasks/{taskID}
+						instanceStatus = getTaskInstanceStatus(instanceStatus.getTaskInstanceID());
+					}
+
 					instances.put(instanceStatus.getTaskInstanceID(), instanceStatus);
 				}
 				status.setInstances(instances);
@@ -473,7 +401,7 @@ public class ArgoWfSchedulerClient {
 					throw new Exception("Invalid Task JSON data", e);
 				}
 
-				return readTaskInstanceStatus(((JsonObject) contentJson));
+				return readTaskInstanceStatus((JsonObject) contentJson);
 			} else {
 				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode());
 			}
@@ -495,5 +423,74 @@ public class ArgoWfSchedulerClient {
 
 		return status;
 	}
+
+	//	public List<JsonObject> getTaskLog(final int taskID) throws Exception {
+	//		try {
+	//			final String accessToken = aquireAccessTokenByClientId();
+	//
+	//			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID + "/log");
+	//			request.addHeader("Authorization", "Bearer " + accessToken);
+	//			request.addHeader("accept", "application/json");
+	//
+	//			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
+	//			if (response.getHttpCode() == 200) {
+	//				JsonNode contentJson;
+	//				try {
+	//					contentJson = JsonReader.readJsonItemString(response.getContent());
+	//				} catch (final Exception e) {
+	//					throw new Exception("Invalid Tasks JSON data", e);
+	//				}
+	//
+	//				final JsonArray jsonArray = ((JsonArray) contentJson);
+	//				final List<JsonObject> returnList = new ArrayList<>();
+	//				for (final Object logItemObject : jsonArray.simpleItems()) {
+	//					final JsonObject logItemJsonObject = (JsonObject) logItemObject;
+	//					final String logContentString = (String) logItemJsonObject.getSimpleValue("content");
+	//					final JsonObject logContent = (JsonObject) JsonReader.readJsonItemString(logContentString);
+	//					returnList.add(logContent);
+	//				}
+	//				return returnList;
+	//			} else {
+	//				throw new Exception("getAllTasks failed. Http Code: " + response.getHttpCode());
+	//			}
+	//		} catch (final UnknownHostException e) {
+	//			throw new Exception("UnknownHost '" + e.getMessage() + "'");
+	//		}
+	//	}
+
+	//	public Map<Integer, TaskInstanceStatus> getStatusOfTaskInstances(final int taskID) throws Exception {
+	//		try {
+	//			final String accessToken = aquireAccessTokenByClientId();
+	//
+	//			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID);
+	//			request.addHeader("Authorization", "Bearer " + accessToken);
+	//			request.addHeader("accept", "application/json");
+	//
+	//			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
+	//			if (response.getHttpCode() == 200) {
+	//				JsonNode contentJson;
+	//				try {
+	//					contentJson = JsonReader.readJsonItemString(response.getContent());
+	//				} catch (final Exception e) {
+	//					throw new Exception("Invalid Task JSON data", e);
+	//				}
+	//
+	//				final JsonObject jsonObject = ((JsonObject) contentJson);
+	//				final JsonArray taskInstances = (JsonArray) jsonObject.get("instances");
+	//
+	//				final Map<Integer, TaskInstanceStatus> returnMap = new LinkedHashMap<>();
+	//				for (final Object taskInstanceObject : taskInstances) {
+	//					final JsonObject taskInstanceJsonObject = (JsonObject) taskInstanceObject;
+	//					returnMap.put((Integer) taskInstanceJsonObject.getSimpleValue("id"), getTaskInstanceStatus((Integer) taskInstanceJsonObject.getSimpleValue("id")));
+	//				}
+	//
+	//				return returnMap;
+	//			} else {
+	//				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode());
+	//			}
+	//		} catch (final UnknownHostException e) {
+	//			throw new Exception("UnknownHost '" + e.getMessage() + "'");
+	//		}
+	//	}
 }
 
