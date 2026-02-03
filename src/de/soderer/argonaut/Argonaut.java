@@ -301,7 +301,7 @@ public class Argonaut extends UpdateableConsoleApplication implements WorkerPare
 		super(APPLICATION_NAME, VERSION);
 	}
 
-	private void execute(final ActionDefinition actionDefinition, final ConfigurationProperties applicationConfiguration) throws Exception {
+	private void execute(final ActionDefinition actionDefinition, @SuppressWarnings("unused") final ConfigurationProperties applicationConfiguration) throws Exception {
 		try {
 			actionDefinitionToExecute = actionDefinition;
 

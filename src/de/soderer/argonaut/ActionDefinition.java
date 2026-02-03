@@ -14,7 +14,7 @@ public class ActionDefinition {
 		return this;
 	}
 
-	public ActionDefinition checkParameters() throws ArgonautException {
+	public ActionDefinition checkParameters() {
 		return this;
 	}
 
