@@ -117,7 +117,32 @@ public class ArgoWfSchedulerClient {
 		}
 	}
 
-	public int createTask(final String workflowName, final Map<String, String> taskParameters, final boolean executeOnlyOnce) throws Exception {
+	public String createParameterConfiguration(final String workflowName, final Map<String, String> taskParameters, final String cronExpression) throws Exception {
+		final JsonObject requestBodyJsonObject = new JsonObject();
+		requestBodyJsonObject.add("name", "Task_" + workflowName + "_" + DateUtilities.formatDate(DateUtilities.ISO_8601_DATETIME_FORMAT_NO_TIMEZONE, ZonedDateTime.now()));
+		if (cronExpression == null) {
+			requestBodyJsonObject.add("cronExpression", "0 0 0 31 2 *"); // 31.02.yyyy => repeat never
+		} else {
+			requestBodyJsonObject.add("cronExpression", cronExpression);
+			requestBodyJsonObject.add("active", true);
+		}
+		requestBodyJsonObject.add("workflowRef", workflowName);
+
+		final JsonArray parametersJsonArray = new JsonArray();
+		for (final Entry<String, String> taskParameter : taskParameters.entrySet()) {
+			final JsonObject parameterJsonObject = new JsonObject();
+
+			parameterJsonObject.add("name", taskParameter.getKey());
+			parameterJsonObject.add("value", taskParameter.getValue());
+
+			parametersJsonArray.add(parameterJsonObject);
+		}
+		requestBodyJsonObject.add("parameters", parametersJsonArray);
+
+		return requestBodyJsonObject.toString();
+	}
+
+	public int createTask(final String workflowName, final Map<String, String> taskParameters, final String cronExpression) throws Exception {
 		try {
 			final String accessToken = aquireAccessTokenByClientId();
 
@@ -126,27 +151,9 @@ public class ArgoWfSchedulerClient {
 			request.addHeader("accept", "application/json");
 			request.addHeader("Content-Type", "application/json");
 
-			final JsonObject requestBodyJsonObject = new JsonObject();
-			requestBodyJsonObject.add("name", "Task_" + workflowName + "_" + DateUtilities.formatDate(DateUtilities.ISO_8601_DATETIME_FORMAT_NO_TIMEZONE, ZonedDateTime.now()));
-			if (executeOnlyOnce) {
-				requestBodyJsonObject.add("cronExpression", "0 0 0 31 2 *"); // 31.02.yyyy => repeat never
-			} else {
-				requestBodyJsonObject.add("cronExpression", "0 0 0 * * *");
-			}
-			requestBodyJsonObject.add("workflowRef", workflowName);
+			String requestBody = createParameterConfiguration(workflowName, taskParameters, cronExpression);
 
-			final JsonArray parametersJsonArray = new JsonArray();
-			for (final Entry<String, String> taskParameter : taskParameters.entrySet()) {
-				final JsonObject parameterJsonObject = new JsonObject();
-
-				parameterJsonObject.add("name", taskParameter.getKey());
-				parameterJsonObject.add("value", taskParameter.getValue());
-
-				parametersJsonArray.add(parameterJsonObject);
-			}
-			requestBodyJsonObject.add("parameters", parametersJsonArray);
-
-			request.setRequestBody(requestBodyJsonObject.toString());
+			request.setRequestBody(requestBody);
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
 			if (response.getHttpCode() == 201) {

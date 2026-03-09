@@ -6,6 +6,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -97,7 +98,11 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 	private Composite workflowTemplateBox;
 	private Combo workflowTemplateCombo;
 
+	private Button activateTimeTriggerButton;
+	private Text cronExpressionText;
+	
 	private Button startTaskButton;
+	private Button createParameterConfigurationButton;
 	private Button showLogDataButton;
 	private Button closeButton;
 
@@ -696,10 +701,69 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				showData(LangResources.get("showLogData"), currentTaskInstanceStatus.getLogMessage());
 			}
 		});
+		
+		final Composite timeTriggerRegion = new Composite(buttonRegion, SWT.NONE);
+		timeTriggerRegion.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false, 2, 1));
+		timeTriggerRegion.setLayout(SwtUtilities.createSmallMarginGridLayout(2, false));
+		
+		activateTimeTriggerButton = new Button(timeTriggerRegion, SWT.CHECK);
+		activateTimeTriggerButton.setLayoutData(new GridData(SWT.LEFT, SWT.BOTTOM, false, false));
+		activateTimeTriggerButton.setText(LangResources.get("timeTrigger"));
+		activateTimeTriggerButton.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(final SelectionEvent ev) {
+				if (activateTimeTriggerButton.getSelection()) {
+					startTaskButton.setText(LangResources.get("createTimeTriggeredTask"));
+				} else {
+					startTaskButton.setText(LangResources.get("startTaskOnce"));
+				}
+			}
+		});
+		
+		cronExpressionText = new Text(timeTriggerRegion, SWT.BORDER);
+		cronExpressionText.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false));
+		ZonedDateTime now = ZonedDateTime.now();
+		String cronExpressionNow = DateUtilities.formatDate("* m H d M y", now.withZoneSameInstant(ZoneId.of("UTC")));
+		cronExpressionText.setText(cronExpressionNow); // "0 0 0 31 2 *"
+		
+		createParameterConfigurationButton = new Button(buttonRegion, SWT.PUSH);
+		createParameterConfigurationButton.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false, 2, 1));
+		createParameterConfigurationButton.setText(LangResources.get("createParameterConfiguration"));
+		createParameterConfigurationButton.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(final SelectionEvent ev) {
+				if (currentTaskInstanceStatus == null) {
+					String parameterConfiguration;
+					try {
+						final Map<String, String> parameters = new LinkedHashMap<>();
+						for (final Entry<String, Text> parameterTextFieldEntry : parametersTextFields.entrySet()) {
+							parameters.put(parameterTextFieldEntry.getKey(), parameterTextFieldEntry.getValue().getText());
+						}
+						
+						if (activateTimeTriggerButton.getSelection()) {
+							parameterConfiguration = argoWfSchedulerClient.createParameterConfiguration(currentWorkflowTemplateName, parameters, cronExpressionText.getText());
+						} else {
+							parameterConfiguration = argoWfSchedulerClient.createParameterConfiguration(currentWorkflowTemplateName, parameters, null);
+						}
+					} catch (final Exception e) {
+						showErrorMessage(LangResources.get("startTaskOnce"), "Cannot create new task: " + e.getMessage());
+						return;
+					}
+
+					showData(LangResources.get("createParameterConfiguration"), parameterConfiguration);
+				} else {
+					currentTaskInstanceStatus = null;
+
+					loadTaskParameters();
+
+					checkButtonStatus();
+				}
+			}
+		});
 
 		startTaskButton = new Button(buttonRegion, SWT.PUSH);
 		startTaskButton.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false));
-		startTaskButton.setText(LangResources.get("startTask"));
+		startTaskButton.setText(LangResources.get("startTaskOnce"));
 		startTaskButton.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(final SelectionEvent ev) {
@@ -715,22 +779,31 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 							for (final Entry<String, Text> parameterTextFieldEntry : parametersTextFields.entrySet()) {
 								parameters.put(parameterTextFieldEntry.getKey(), parameterTextFieldEntry.getValue().getText());
 							}
-							taskID = argoWfSchedulerClient.createTask(currentWorkflowTemplateName, parameters, true);
+							
+							if (activateTimeTriggerButton.getSelection()) {
+								taskID = argoWfSchedulerClient.createTask(currentWorkflowTemplateName, parameters, cronExpressionText.getText());
+							} else {
+								taskID = argoWfSchedulerClient.createTask(currentWorkflowTemplateName, parameters, null);
+							}
 						} catch (final Exception e) {
-							showErrorMessage(LangResources.get("startTask"), "Cannot create new task: " + e.getMessage());
+							showErrorMessage(LangResources.get("createTimeTriggeredTask"), "Cannot create new task: " + e.getMessage());
 							return;
 						}
 
-						try {
-							argoWfSchedulerClient.startTask(taskID);
-						} catch (final Exception e) {
-							showErrorMessage(LangResources.get("startTask"), "Cannot start newly created task: " + e.getMessage());
-						}
-
-						pleaseWaitDialog.hide();
-						pleaseWaitDialog = null;
-
-						showMessage(LangResources.get("startTask"), LangResources.get("startedTask", taskID));
+						if (activateTimeTriggerButton.getSelection()) {
+							showMessage(LangResources.get("startTaskOnce"), LangResources.get("startedTask", taskID));
+						} else {
+							try {
+								argoWfSchedulerClient.startTask(taskID);
+							} catch (final Exception e) {
+								showErrorMessage(LangResources.get("startTaskOnce"), "Cannot start newly created task: " + e.getMessage());
+							}
+	
+							pleaseWaitDialog.hide();
+							pleaseWaitDialog = null;
+	
+							showMessage(LangResources.get("startTaskOnce"), LangResources.get("startedTask", taskID));
+						} 
 					} else {
 						currentTaskInstanceStatus = null;
 
@@ -805,7 +878,8 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 			}
 		}
 		scrolledPart.layout();
-		parametersPart.layout();
+		parametersPart.layout(true, true);
+		scrolledPart.setMinSize(parametersPart.computeSize(SWT.DEFAULT, SWT.DEFAULT));
 	}
 
 	private class ConfigButtonSelectionListener extends SelectionAdapter {
@@ -857,7 +931,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 		if (startTaskButton != null) {
 			if (currentTaskInstanceStatus == null) {
-				startTaskButton.setText(LangResources.get("startTask"));
+				startTaskButton.setText(LangResources.get("startTaskOnce"));
 			} else {
 				startTaskButton.setText(LangResources.get("prepareTask"));
 			}
