@@ -9,6 +9,7 @@ public class ServerConfiguration {
 	private String argoWfSchedulerBaseUrl;
 	private String clientID;
 	private String clientSecret = null;
+	private String cookieData = null;
 
 	public String getDisplayName() {
 		if (Utilities.isNotBlank(displayName)) {
@@ -66,5 +67,13 @@ public class ServerConfiguration {
 	public ServerConfiguration setClientSecret(final String clientSecret) {
 		this.clientSecret = clientSecret;
 		return this;
+	}
+
+	public String getCookieData() {
+		return cookieData;
+	}
+
+	public void setCookieData(String cookieData) {
+		this.cookieData = cookieData;
 	}
 }

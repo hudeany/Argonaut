@@ -17,6 +17,7 @@ import de.soderer.json.JsonArray;
 import de.soderer.json.JsonNode;
 import de.soderer.json.JsonObject;
 import de.soderer.json.JsonReader;
+import de.soderer.network.HttpConstants;
 import de.soderer.network.HttpMethod;
 import de.soderer.network.HttpRequest;
 import de.soderer.network.HttpResponse;
@@ -25,6 +26,7 @@ import de.soderer.network.TrustManagerUtilities;
 import de.soderer.pac.utilities.ProxyConfiguration;
 import de.soderer.utilities.DateUtilities;
 import de.soderer.utilities.JwtUtilities;
+import de.soderer.utilities.Utilities;
 
 public class ArgoWfSchedulerClient {
 	private final ProxyConfiguration proxyConfiguration;
@@ -33,6 +35,7 @@ public class ArgoWfSchedulerClient {
 	private final String realmID;
 	private final String clientID;
 	private final String clientSecret;
+	private final String cookieData;
 	private final String argoWfSchedulerBaseUrl;
 
 	private TrustManager trustManager = null;
@@ -40,12 +43,13 @@ public class ArgoWfSchedulerClient {
 	private String accesToken = null;
 	private ZonedDateTime accessTokenValidUntil = null;
 
-	public ArgoWfSchedulerClient(final ProxyConfiguration proxyConfiguration, final boolean tlsServerCertificateCheck, final String idpUrl, final String realmID, final String clientID, final String clientSecret, final String argoWfSchedulerBaseUrl) throws Exception {
+	public ArgoWfSchedulerClient(final ProxyConfiguration proxyConfiguration, final boolean tlsServerCertificateCheck, final String idpUrl, final String realmID, final String clientID, final String clientSecret, String cookieData, final String argoWfSchedulerBaseUrl) throws Exception {
 		this.proxyConfiguration = proxyConfiguration;
 		this.idpUrl = idpUrl;
 		this.realmID = realmID;
 		this.clientID = clientID;
 		this.clientSecret = clientSecret;
+		this.cookieData = cookieData;
 		this.argoWfSchedulerBaseUrl = argoWfSchedulerBaseUrl;
 
 		if (!tlsServerCertificateCheck) {
@@ -58,7 +62,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/workflow/names");
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
 			if (response.getHttpCode() == 200) {
@@ -91,7 +98,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/workflow/" + URLEncoder.encode(workflowName, StandardCharsets.UTF_8) + "/parameter");
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 			request.addHeader("accept", "application/json");
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
@@ -147,7 +157,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.POST, argoWfSchedulerBaseUrl + "/tasks");
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 			request.addHeader("accept", "application/json");
 			request.addHeader("Content-Type", "application/json");
 
@@ -179,7 +192,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/search");
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 			request.addHeader("accept", "application/json");
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
@@ -206,7 +222,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID);
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 			request.addHeader("accept", "application/json");
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
@@ -240,7 +259,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID + "/run");
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 			request.addHeader("accept", "application/json");
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
@@ -257,7 +279,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.DELETE, argoWfSchedulerBaseUrl + "/tasks/" + taskID);
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 			request.addHeader("accept", "application/json");
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
@@ -307,7 +332,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/search");
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 			request.addHeader("accept", "application/json");
 			request.addUrlParameter("name", workflowTemplateName);
 
@@ -340,7 +368,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID);
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 			request.addHeader("accept", "application/json");
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
@@ -381,6 +412,12 @@ public class ArgoWfSchedulerClient {
 					parametersMap.put((String) taskParameterJsonObject.getSimpleValue("name"), (String) taskParameterJsonObject.getSimpleValue("value"));
 				}
 				status.setParameters(parametersMap);
+				
+				Boolean active = (Boolean) jsonObject.getSimpleValue("active");
+				String cronExpression = (String) jsonObject.getSimpleValue("cronExpression");
+				if (active != null && active && Utilities.isNotBlank(cronExpression)) {
+					status.setCronExpression(cronExpression);
+				}
 
 				return status;
 			} else {
@@ -396,7 +433,10 @@ public class ArgoWfSchedulerClient {
 			final String accessToken = aquireAccessTokenByClientId();
 
 			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/instances/" + taskInstanceID);
-			request.addHeader("Authorization", "Bearer " + accessToken);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
 			request.addHeader("accept", "application/json");
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
@@ -436,7 +476,10 @@ public class ArgoWfSchedulerClient {
 	//			final String accessToken = aquireAccessTokenByClientId();
 	//
 	//			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID + "/log");
-	//			request.addHeader("Authorization", "Bearer " + accessToken);
+	//			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+	//			if (Utilities.isNotBlank(cookieData)) {
+	//				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+	//			}
 	//			request.addHeader("accept", "application/json");
 	//
 	//			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
@@ -470,7 +513,10 @@ public class ArgoWfSchedulerClient {
 	//			final String accessToken = aquireAccessTokenByClientId();
 	//
 	//			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/tasks/" + taskID);
-	//			request.addHeader("Authorization", "Bearer " + accessToken);
+	//			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+	//			if (Utilities.isNotBlank(cookieData)) {
+	//				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+	//			}
 	//			request.addHeader("accept", "application/json");
 	//
 	//			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);

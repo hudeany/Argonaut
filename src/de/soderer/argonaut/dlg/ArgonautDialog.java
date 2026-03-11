@@ -179,6 +179,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 					serverConfiguration.setArgoWfSchedulerBaseUrl((String) itemJsonObject.getSimpleValue("argoWfSchedulerBaseUrl"));
 					serverConfiguration.setClientID((String) itemJsonObject.getSimpleValue("clientID"));
 					serverConfiguration.setClientSecret((String) itemJsonObject.getSimpleValue("clientSecret"));
+					serverConfiguration.setCookieData((String) itemJsonObject.getSimpleValue("cookieData"));
 
 					serverConfigurations.put(serverConfiguration.getDisplayName(), serverConfiguration);
 				}
@@ -201,6 +202,9 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				serverJsonObject.add("clientID", serversConfiguration.getClientID());
 				if (serversConfiguration.getClientSecret() != null) {
 					serverJsonObject.add("clientSecret", serversConfiguration.getClientSecret());
+				}
+				if (Utilities.isNotBlank(serversConfiguration.getCookieData())) {
+					serverJsonObject.add("cookieData", serversConfiguration.getCookieData());
 				}
 
 				serversArray.add(serverJsonObject);
@@ -284,7 +288,8 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 							LangResources.get("realmID"),
 							LangResources.get("argoWfSchedulerBaseUrl"),
 							LangResources.get("clientID"),
-							LangResources.get("clientSecret")};
+							LangResources.get("clientSecret"),
+							LangResources.get("cookieData")};
 					final MultiInputDialog dialog = new MultiInputDialog(getShell(), Argonaut.APPLICATION_NAME, LangResources.get("addServer"), serverItems);
 					final List<String> serverValues = dialog.open();
 					if (serverValues != null) {
@@ -296,6 +301,9 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 						serverConfiguration.setClientID(serverValues.get(4));
 						if (Utilities.isNotEmpty(serverValues.get(5))) {
 							serverConfiguration.setClientSecret(serverValues.get(5));
+						}
+						if (Utilities.isNotEmpty(serverValues.get(6))) {
+							serverConfiguration.setCookieData(serverValues.get(6));
 						}
 						if (serverConfigurations.containsKey(serverConfiguration.getDisplayName())) {
 							throw new Exception("Server configuration with display name '" + serverConfiguration.getDisplayName() + "' already exists. Delete before readding");
@@ -355,7 +363,8 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 								LangResources.get("realmID"),
 								LangResources.get("argoWfSchedulerBaseUrl"),
 								LangResources.get("clientID"),
-								LangResources.get("clientSecret")};
+								LangResources.get("clientSecret"),
+								LangResources.get("cookieData")};
 						final MultiInputDialog dialog = new MultiInputDialog(getShell(), Argonaut.APPLICATION_NAME, LangResources.get("editServer"), serverItems);
 						dialog.setWidth(300);
 						dialog.setDefaultTexts(new String[] {
@@ -364,7 +373,8 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 								serverConfiguration.getRealmID(),
 								serverConfiguration.getArgoWfSchedulerBaseUrl(),
 								serverConfiguration.getClientID(),
-								serverConfiguration.getClientSecret() == null ? "" : serverConfiguration.getClientSecret()});
+								serverConfiguration.getClientSecret() == null ? "" : serverConfiguration.getClientSecret(),
+								serverConfiguration.getCookieData() == null ? "" : serverConfiguration.getCookieData()});
 						final List<String> serverValues = dialog.open();
 						if (serverValues != null) {
 							serverConfiguration.setDisplayName(serverValues.get(0));
@@ -376,6 +386,11 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 								serverConfiguration.setClientSecret(serverValues.get(5));
 							} else {
 								serverConfiguration.setClientSecret(null);
+							}
+							if (Utilities.isNotEmpty(serverValues.get(6))) {
+								serverConfiguration.setCookieData(serverValues.get(6));
+							} else {
+								serverConfiguration.setCookieData(null);
 							}
 							saveConfiguration();
 						}
@@ -517,7 +532,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 			if (Utilities.isNotBlank(currentServerSelection)) {
 				final ServerConfiguration serverConfiguration = serverConfigurations.get(currentServerSelection);
 				String clientSecret = serverConfiguration.getClientSecret();
-				if (Utilities.isEmpty(serverConfiguration.getClientSecret())) {
+				if (Utilities.isEmpty(clientSecret)) {
 					final CredentialsDialog dialog = new CredentialsDialog(getShell(),
 							Argonaut.APPLICATION_NAME,
 							LangResources.get("enterClientSecretForServer", serverConfiguration.getClientID(), serverConfiguration.getDisplayName()),
@@ -541,6 +556,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 							serverConfiguration.getRealmID(),
 							serverConfiguration.getClientID(),
 							clientSecret,
+							serverConfiguration.getCookieData(),
 							serverConfiguration.getArgoWfSchedulerBaseUrl());
 				} else {
 					argoWfSchedulerClient = null;
@@ -611,7 +627,24 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 			final List<Integer> taskIds = argoWfSchedulerClient.getWorkflowTemplateTaskIds(currentWorkflowTemplateName);
 			for (final Integer taskID : taskIds) {
 				final TaskStatus taskStatus = argoWfSchedulerClient.getTaskStatus(taskID);
-				for (final TaskInstanceStatus instanceStatus : taskStatus.getInstances().values()) {
+				if (!taskStatus.getInstances().isEmpty()) {
+					for (final TaskInstanceStatus instanceStatus : taskStatus.getInstances().values()) {
+						instanceStatus.setTaskStatus(taskStatus);
+						listOfTaskInstanceStatus.add(instanceStatus);
+					}
+				} else {
+					TaskInstanceStatus instanceStatus = new TaskInstanceStatus();
+					instanceStatus.setTaskID(taskID);
+					instanceStatus.setTaskInstanceID(-1);
+					instanceStatus.setWorkflowId(taskStatus.getWorkflowName());
+					instanceStatus.setCreated(taskStatus.getCreated());
+					instanceStatus.setUpdated(taskStatus.getUpdated());
+					instanceStatus.setStatus("No Instances");
+					if (Utilities.isNotBlank(taskStatus.getCronExpression())) {
+						instanceStatus.setLogMessage("CronExpression: " + taskStatus.getCronExpression());
+					} else {
+						instanceStatus.setLogMessage("<empty>");
+					}
 					instanceStatus.setTaskStatus(taskStatus);
 					listOfTaskInstanceStatus.add(instanceStatus);
 				}
@@ -674,12 +707,13 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		scrolledPart = new ScrolledComposite(parametersRegion, SWT.H_SCROLL | SWT.V_SCROLL);
 
 		parametersPart = new Composite(scrolledPart, SWT.NONE);
-		parametersPart.setLayoutData(new GridData(SWT.FILL, SWT.UP, true, true, 1, 1));
+		parametersPart.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
 		parametersPart.setLayout(SwtUtilities.createSmallMarginGridLayout(2, false));
 
 		parametersTextFields = new LinkedHashMap<>();
 
 		scrolledPart.setContent(parametersPart);
+		scrolledPart.setAlwaysShowScrollBars(true);
 		scrolledPart.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
 		scrolledPart.setMinSize(200, 250);
 		scrolledPart.setExpandHorizontal(true);
@@ -877,9 +911,10 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				parametersTextFields.put(parametersEntry.getKey(), parameterTextfield);
 			}
 		}
-		scrolledPart.layout();
-		parametersPart.layout(true, true);
+		
 		scrolledPart.setMinSize(parametersPart.computeSize(SWT.DEFAULT, SWT.DEFAULT));
+		scrolledPart.layout(true, true);
+		rightPart.layout(true, true);
 	}
 
 	private class ConfigButtonSelectionListener extends SelectionAdapter {
