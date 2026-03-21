@@ -21,7 +21,7 @@ public class ImageManager {
 
 	private Image getImageFromString(final String name) {
 		if (!store.containsKey(name)) {
-			store.put(name, new Image(shell.getDisplay(), getClass().getResourceAsStream(name)));
+			store.put(name, new Image(shell.getDisplay(), getClass().getResourceAsStream("/images/icons/" + name)));
 		}
 
 		return store.get(name);
