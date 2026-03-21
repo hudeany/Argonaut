@@ -43,7 +43,7 @@ public class ArgoWfSchedulerClient {
 	private String accesToken = null;
 	private ZonedDateTime accessTokenValidUntil = null;
 
-	public ArgoWfSchedulerClient(final ProxyConfiguration proxyConfiguration, final boolean tlsServerCertificateCheck, final String idpUrl, final String realmID, final String clientID, final String clientSecret, String cookieData, final String argoWfSchedulerBaseUrl) throws Exception {
+	public ArgoWfSchedulerClient(final ProxyConfiguration proxyConfiguration, final boolean tlsServerCertificateCheck, final String idpUrl, final String realmID, final String clientID, final String clientSecret, final String cookieData, final String argoWfSchedulerBaseUrl) throws Exception {
 		this.proxyConfiguration = proxyConfiguration;
 		this.idpUrl = idpUrl;
 		this.realmID = realmID;
@@ -164,7 +164,7 @@ public class ArgoWfSchedulerClient {
 			request.addHeader("accept", "application/json");
 			request.addHeader("Content-Type", "application/json");
 
-			String requestBody = createParameterConfiguration(workflowName, taskParameters, cronExpression);
+			final String requestBody = createParameterConfiguration(workflowName, taskParameters, cronExpression);
 
 			request.setRequestBody(requestBody);
 
@@ -412,9 +412,9 @@ public class ArgoWfSchedulerClient {
 					parametersMap.put((String) taskParameterJsonObject.getSimpleValue("name"), (String) taskParameterJsonObject.getSimpleValue("value"));
 				}
 				status.setParameters(parametersMap);
-				
-				Boolean active = (Boolean) jsonObject.getSimpleValue("active");
-				String cronExpression = (String) jsonObject.getSimpleValue("cronExpression");
+
+				final Boolean active = (Boolean) jsonObject.getSimpleValue("active");
+				final String cronExpression = (String) jsonObject.getSimpleValue("cronExpression");
 				if (active != null && active && Utilities.isNotBlank(cronExpression)) {
 					status.setCronExpression(cronExpression);
 				}
