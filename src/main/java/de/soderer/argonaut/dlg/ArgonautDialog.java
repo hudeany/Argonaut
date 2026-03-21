@@ -100,7 +100,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 	private Button activateTimeTriggerButton;
 	private Text cronExpressionText;
-	
+
 	private Button startTaskButton;
 	private Button createParameterConfigurationButton;
 	private Button showLogDataButton;
@@ -134,7 +134,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 			setDailyUpdateCheckStatus(true);
 			try {
 				if (ApplicationUpdateUtilities.checkForNewVersionAvailable(Argonaut.VERSIONINFO_DOWNLOAD_URL, proxyConfiguration, Argonaut.APPLICATION_NAME, Argonaut.VERSION) != null) {
-					ApplicationUpdateUtilities.executeUpdate(this, Argonaut.VERSIONINFO_DOWNLOAD_URL, proxyConfiguration, Argonaut.APPLICATION_NAME, Argonaut.VERSION, Argonaut.TRUSTED_UPDATE_CA_CERTIFICATES, null, null, null, true);
+					ApplicationUpdateUtilities.executeUpdate(this, Argonaut.VERSIONINFO_DOWNLOAD_URL, proxyConfiguration, Argonaut.APPLICATION_NAME, Argonaut.VERSION, Argonaut.TRUSTED_UPDATE_CA_CERTIFICATES, null, null, null, true, false);
 				}
 			} catch (final Exception e) {
 				showErrorMessage(LangResources.get("updateCheck"), LangResources.get("error.cannotCheckForUpdate", e.getMessage()));
@@ -374,7 +374,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 								serverConfiguration.getArgoWfSchedulerBaseUrl(),
 								serverConfiguration.getClientID(),
 								serverConfiguration.getClientSecret() == null ? "" : serverConfiguration.getClientSecret(),
-								serverConfiguration.getCookieData() == null ? "" : serverConfiguration.getCookieData()});
+										serverConfiguration.getCookieData() == null ? "" : serverConfiguration.getCookieData()});
 						final List<String> serverValues = dialog.open();
 						if (serverValues != null) {
 							serverConfiguration.setDisplayName(serverValues.get(0));
@@ -633,7 +633,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 						listOfTaskInstanceStatus.add(instanceStatus);
 					}
 				} else {
-					TaskInstanceStatus instanceStatus = new TaskInstanceStatus();
+					final TaskInstanceStatus instanceStatus = new TaskInstanceStatus();
 					instanceStatus.setTaskID(taskID);
 					instanceStatus.setTaskInstanceID(-1);
 					instanceStatus.setWorkflowId(taskStatus.getWorkflowName());
@@ -735,11 +735,11 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				showData(LangResources.get("showLogData"), currentTaskInstanceStatus.getLogMessage());
 			}
 		});
-		
+
 		final Composite timeTriggerRegion = new Composite(buttonRegion, SWT.NONE);
 		timeTriggerRegion.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false, 2, 1));
 		timeTriggerRegion.setLayout(SwtUtilities.createSmallMarginGridLayout(2, false));
-		
+
 		activateTimeTriggerButton = new Button(timeTriggerRegion, SWT.CHECK);
 		activateTimeTriggerButton.setLayoutData(new GridData(SWT.LEFT, SWT.BOTTOM, false, false));
 		activateTimeTriggerButton.setText(LangResources.get("timeTrigger"));
@@ -753,13 +753,13 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				}
 			}
 		});
-		
+
 		cronExpressionText = new Text(timeTriggerRegion, SWT.BORDER);
 		cronExpressionText.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false));
-		ZonedDateTime now = ZonedDateTime.now();
-		String cronExpressionNow = DateUtilities.formatDate("* m H d M y", now.withZoneSameInstant(ZoneId.of("UTC")));
+		final ZonedDateTime now = ZonedDateTime.now();
+		final String cronExpressionNow = DateUtilities.formatDate("* m H d M y", now.withZoneSameInstant(ZoneId.of("UTC")));
 		cronExpressionText.setText(cronExpressionNow); // "0 0 0 31 2 *"
-		
+
 		createParameterConfigurationButton = new Button(buttonRegion, SWT.PUSH);
 		createParameterConfigurationButton.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false, 2, 1));
 		createParameterConfigurationButton.setText(LangResources.get("createParameterConfiguration"));
@@ -773,7 +773,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 						for (final Entry<String, Text> parameterTextFieldEntry : parametersTextFields.entrySet()) {
 							parameters.put(parameterTextFieldEntry.getKey(), parameterTextFieldEntry.getValue().getText());
 						}
-						
+
 						if (activateTimeTriggerButton.getSelection()) {
 							parameterConfiguration = argoWfSchedulerClient.createParameterConfiguration(currentWorkflowTemplateName, parameters, cronExpressionText.getText());
 						} else {
@@ -813,7 +813,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 							for (final Entry<String, Text> parameterTextFieldEntry : parametersTextFields.entrySet()) {
 								parameters.put(parameterTextFieldEntry.getKey(), parameterTextFieldEntry.getValue().getText());
 							}
-							
+
 							if (activateTimeTriggerButton.getSelection()) {
 								taskID = argoWfSchedulerClient.createTask(currentWorkflowTemplateName, parameters, cronExpressionText.getText());
 							} else {
@@ -832,12 +832,12 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 							} catch (final Exception e) {
 								showErrorMessage(LangResources.get("startTaskOnce"), "Cannot start newly created task: " + e.getMessage());
 							}
-	
+
 							pleaseWaitDialog.hide();
 							pleaseWaitDialog = null;
-	
+
 							showMessage(LangResources.get("startTaskOnce"), LangResources.get("startedTask", taskID));
-						} 
+						}
 					} else {
 						currentTaskInstanceStatus = null;
 
@@ -911,7 +911,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				parametersTextFields.put(parametersEntry.getKey(), parameterTextfield);
 			}
 		}
-		
+
 		scrolledPart.setMinSize(parametersPart.computeSize(SWT.DEFAULT, SWT.DEFAULT));
 		scrolledPart.layout(true, true);
 		rightPart.layout(true, true);
