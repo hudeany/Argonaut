@@ -263,6 +263,11 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 					loadWorflowTemplates();
 					fillParametersPart(null, false);
+					
+					currentTaskStatus = null;
+					setupTasksTable();
+					currentTaskInstanceStatus = null;
+					setupTaskInstancesTable();
 
 					checkButtonStatus();
 				} finally {
@@ -1057,10 +1062,10 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		if (tasksTable != null) {
 			tasksTable.setEnabled(tasksTable.getItemCount() > 0);
 			
-			activateTimeTriggerButton.setEnabled(currentTaskStatus != null);
-			cronExpressionText.setEnabled(currentTaskStatus != null);
-			startTaskButton.setEnabled(currentTaskStatus != null);
-			createParameterConfigurationButton.setEnabled(currentTaskStatus != null);
+			activateTimeTriggerButton.setEnabled(Utilities.isNotBlank(currentWorkflowTemplateName));
+			cronExpressionText.setEnabled(Utilities.isNotBlank(currentWorkflowTemplateName));
+			startTaskButton.setEnabled(Utilities.isNotBlank(currentWorkflowTemplateName));
+			createParameterConfigurationButton.setEnabled(Utilities.isNotBlank(currentWorkflowTemplateName));
 		}
 
 		if (taskInstancesTable != null) {
