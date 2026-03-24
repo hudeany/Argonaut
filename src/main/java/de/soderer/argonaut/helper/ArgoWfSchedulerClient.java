@@ -40,10 +40,10 @@ public class ArgoWfSchedulerClient {
 
 	private TrustManager trustManager = null;
 
-	private String accessToken = null;
+	private String cachedAccessToken = null;
 	private ZonedDateTime accessTokenValidUntil = null;
 
-	public ArgoWfSchedulerClient(final ProxyConfiguration proxyConfiguration, final boolean tlsServerCertificateCheck, final String idpUrl, final String realmID, final String clientID, final String clientSecret, String cookieData, final String argoWfSchedulerBaseUrl) throws Exception {
+	public ArgoWfSchedulerClient(final ProxyConfiguration proxyConfiguration, final boolean tlsServerCertificateCheck, final String idpUrl, final String realmID, final String clientID, final String clientSecret, final String cookieData, final String argoWfSchedulerBaseUrl) throws Exception {
 		this.proxyConfiguration = proxyConfiguration;
 		this.idpUrl = idpUrl;
 		this.realmID = realmID;
@@ -127,6 +127,7 @@ public class ArgoWfSchedulerClient {
 		}
 	}
 
+	@SuppressWarnings("static-method")
 	public String createParameterConfiguration(final String workflowName, final Map<String, String> taskParameters, final String cronExpression) throws Exception {
 		final JsonObject requestBodyJsonObject = new JsonObject();
 		requestBodyJsonObject.add("name", "Task_" + workflowName + "_" + DateUtilities.formatDate(DateUtilities.ISO_8601_DATETIME_FORMAT_NO_TIMEZONE, ZonedDateTime.now()));
@@ -164,7 +165,7 @@ public class ArgoWfSchedulerClient {
 			request.addHeader("accept", "application/json");
 			request.addHeader("Content-Type", "application/json");
 
-			String requestBody = createParameterConfiguration(workflowName, taskParameters, cronExpression);
+			final String requestBody = createParameterConfiguration(workflowName, taskParameters, cronExpression);
 
 			request.setRequestBody(requestBody);
 
@@ -275,9 +276,9 @@ public class ArgoWfSchedulerClient {
 					throw new Exception("Invalid Task JSON data", e);
 				}
 
-				List<TaskInstanceStatus> taskInstances = new ArrayList<>();
-				JsonObject contentJsonObject = (JsonObject) contentJson;
-				for (JsonNode item : ((JsonArray) contentJsonObject.get("instances")).items()) {
+				final List<TaskInstanceStatus> taskInstances = new ArrayList<>();
+				final JsonObject contentJsonObject = (JsonObject) contentJson;
+				for (final JsonNode item : ((JsonArray) contentJsonObject.get("instances")).items()) {
 					taskInstances.add(readTaskInstanceStatus((JsonObject) item));
 				}
 				return taskInstances;
@@ -309,7 +310,7 @@ public class ArgoWfSchedulerClient {
 					throw new Exception("Invalid Task JSON data", e);
 				}
 
-				TaskInstanceStatus taskInstanceStatus = readTaskInstanceStatus((JsonObject) contentJson);
+				final TaskInstanceStatus taskInstanceStatus = readTaskInstanceStatus((JsonObject) contentJson);
 				return taskInstanceStatus;
 			} else {
 				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
@@ -363,7 +364,7 @@ public class ArgoWfSchedulerClient {
 
 	private String aquireAccessTokenByClientId() throws Exception {
 		try {
-			if (accessToken == null || ZonedDateTime.now().isAfter(accessTokenValidUntil.minusSeconds(10))) {
+			if (cachedAccessToken == null || ZonedDateTime.now().isAfter(accessTokenValidUntil.minusSeconds(10))) {
 				final HttpRequest request = new HttpRequest(HttpMethod.POST, idpUrl + "/realms/" + realmID + "/protocol/openid-connect/token");
 				request.addHeader("Content-Type", "application/x-www-form-urlencoded");
 				request.addPostParameter("grant_type", "client_credentials");
@@ -378,16 +379,16 @@ public class ArgoWfSchedulerClient {
 					} catch (final Exception e) {
 						throw new Exception("Invalid AccessToken JSON data", e);
 					}
-					accessToken = (String) ((JsonObject) contentJson).getSimpleValue("access_token");
-					accessTokenValidUntil = JwtUtilities.getJwtTokenValidity(accessToken);
+					cachedAccessToken = (String) ((JsonObject) contentJson).getSimpleValue("access_token");
+					accessTokenValidUntil = JwtUtilities.getJwtTokenValidity(cachedAccessToken);
 				} else {
-					accessToken = null;
+					cachedAccessToken = null;
 					accessTokenValidUntil = null;
 					throw new Exception("aquireAccessToken failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 				}
 			}
 
-			return accessToken;
+			return cachedAccessToken;
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
 		}
@@ -417,17 +418,17 @@ public class ArgoWfSchedulerClient {
 				final JsonArray jsonArray = ((JsonArray) contentJson);
 				for (final JsonNode item : jsonArray.items()) {
 					final JsonObject itemJsonObject = (JsonObject) item;
-					int taskID = ((Integer) itemJsonObject.getSimpleValue("id"));
-					TaskStatus taskStatus = getTaskStatus(taskID);
+					final int taskID = ((Integer) itemJsonObject.getSimpleValue("id"));
+					final TaskStatus taskStatus = getTaskStatus(taskID);
 					if (taskStatus.getWorkflowName().equals(workflowTemplateName)) {
-						Boolean active = ((Boolean) itemJsonObject.getSimpleValue("active"));
+						final Boolean active = ((Boolean) itemJsonObject.getSimpleValue("active"));
 						if (active != null && active) {
-							String cronExpression = ((String) itemJsonObject.getSimpleValue("cronExpression"));
+							final String cronExpression = ((String) itemJsonObject.getSimpleValue("cronExpression"));
 							if (Utilities.isNotBlank(cronExpression)) {
 								taskStatus.setCronExpression(cronExpression);
 							}
-	
-							String nextScheduledTimeString = ((String) itemJsonObject.getSimpleValue("nextScheduledTime"));
+
+							final String nextScheduledTimeString = ((String) itemJsonObject.getSimpleValue("nextScheduledTime"));
 							if (Utilities.isNotBlank(nextScheduledTimeString)) {
 								taskStatus.setNextScheduledTime(DateUtilities.parseIso8601DateTimeString(nextScheduledTimeString));
 							}
@@ -495,9 +496,9 @@ public class ArgoWfSchedulerClient {
 					parametersMap.put((String) taskParameterJsonObject.getSimpleValue("name"), (String) taskParameterJsonObject.getSimpleValue("value"));
 				}
 				status.setParameters(parametersMap);
-				
-				Boolean active = (Boolean) jsonObject.getSimpleValue("active");
-				String cronExpression = (String) jsonObject.getSimpleValue("cronExpression");
+
+				final Boolean active = (Boolean) jsonObject.getSimpleValue("active");
+				final String cronExpression = (String) jsonObject.getSimpleValue("cronExpression");
 				if (active != null && active && Utilities.isNotBlank(cronExpression)) {
 					status.setCronExpression(cronExpression);
 				}

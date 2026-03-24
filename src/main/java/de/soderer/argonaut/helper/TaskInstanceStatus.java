@@ -14,7 +14,6 @@ public class TaskInstanceStatus {
 	private String status;
 	private String logMessage;
 	private TaskStatus taskStatus;
-	private String taskInstanceStatus;
 
 	public Integer getTaskID() {
 		return taskID;
