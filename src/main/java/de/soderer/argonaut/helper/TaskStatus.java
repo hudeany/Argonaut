@@ -12,6 +12,7 @@ public class TaskStatus {
 	private Map<Integer, TaskInstanceStatus> instances;
 	private Map<String, String> parameters;
 	private String cronExpression = null;
+	private ZonedDateTime nextScheduledTime = null;
 
 	public Integer getTaskID() {
 		return taskID;
@@ -82,6 +83,15 @@ public class TaskStatus {
 
 	public TaskStatus setCronExpression(String cronExpression) {
 		this.cronExpression = cronExpression;
+		return this;
+	}
+
+	public ZonedDateTime getNextScheduledTime() {
+		return nextScheduledTime;
+	}
+
+	public TaskStatus setNextScheduledTime(ZonedDateTime nextScheduledTime) {
+		this.nextScheduledTime = nextScheduledTime;
 		return this;
 	}
 }

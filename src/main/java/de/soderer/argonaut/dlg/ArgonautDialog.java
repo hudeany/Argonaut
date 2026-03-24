@@ -47,7 +47,6 @@ import de.soderer.json.JsonNode;
 import de.soderer.json.JsonObject;
 import de.soderer.json.JsonReader;
 import de.soderer.json.JsonWriter;
-import de.soderer.json.utilities.Tuple;
 import de.soderer.network.NetworkUtilities;
 import de.soderer.pac.utilities.ProxyConfiguration;
 import de.soderer.pac.utilities.ProxyConfiguration.ProxyConfigurationType;
@@ -85,22 +84,18 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 	private Composite parametersPart;
 	private ScrolledComposite scrolledPart;
 	private Map<String, Text> parametersTextFields;
+	private Table tasksTable;
 	private Table taskInstancesTable;
-	private int columnTaskIdIndex;
-	private int columnInstanceIdIndex;
-	private int columnTaskNameIndex;
-	private int columnStartIndex;
-	private int columnStatusIndex;
-
-	private Listener currentFillDataListener;
-	private Listener columnSortListener;
+	
+	private Listener currentFillTasksDataListener;
+	private Listener currentFillTaskInstancesDataListener;
 
 	private Composite workflowTemplateBox;
 	private Combo workflowTemplateCombo;
 
 	private Button activateTimeTriggerButton;
 	private Text cronExpressionText;
-
+	
 	private Button startTaskButton;
 	private Button createParameterConfigurationButton;
 	private Button showLogDataButton;
@@ -111,7 +106,11 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 	private String currentServerSelection = null;
 	private String currentWorkflowTemplateName = null;
-	private List<TaskInstanceStatus> listOfTaskInstanceStatus = new ArrayList<>();
+	
+	private List<TaskStatus> listOfTasksStatus = new ArrayList<>();
+	private TaskStatus currentTaskStatus = null;
+	
+	private List<TaskInstanceStatus> listOfTaskInstancesStatus = new ArrayList<>();
 	private TaskInstanceStatus currentTaskInstanceStatus = null;
 
 	public ArgonautDialog(final Display display, final ConfigurationProperties applicationConfiguration) throws Exception {
@@ -150,8 +149,8 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		setLayout(new FillLayout());
 		createLeftPart(sashForm);
 		createRightPart(sashForm);
-		setSize(1000, 450);
-		setMinimumSize(450, 300);
+		setSize(1000, 600);
+		setMinimumSize(450, 450);
 
 		addListener(SWT.Close, new Listener() {
 			@Override
@@ -374,7 +373,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 								serverConfiguration.getArgoWfSchedulerBaseUrl(),
 								serverConfiguration.getClientID(),
 								serverConfiguration.getClientSecret() == null ? "" : serverConfiguration.getClientSecret(),
-										serverConfiguration.getCookieData() == null ? "" : serverConfiguration.getCookieData()});
+								serverConfiguration.getCookieData() == null ? "" : serverConfiguration.getCookieData()});
 						final List<String> serverValues = dialog.open();
 						if (serverValues != null) {
 							serverConfiguration.setDisplayName(serverValues.get(0));
@@ -425,7 +424,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 					currentWorkflowTemplateName = ((Combo) arg0.getSource()).getText();
 
-					setupTable();
+					setupTasksTable();
 					loadTaskParameters();
 
 					checkButtonStatus();
@@ -451,7 +450,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 							pleaseWaitDialog = new PleaseWaitDialog(getShell(), Argonaut.APPLICATION_NAME);
 							pleaseWaitDialog.open();
 
-							setupTable();
+							setupTasksTable();
 							loadTaskParameters();
 
 							checkButtonStatus();
@@ -460,6 +459,9 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 								pleaseWaitDialog.hide();
 							}
 						}
+						
+						listOfTaskInstancesStatus = new ArrayList<>();
+						setupTaskInstancesTable();
 
 						checkButtonStatus();
 					}
@@ -468,63 +470,156 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				}
 			}
 		});
+		
+		// Tasks
+		createTasksTable(leftPart);
+		
+		// Instances
+		createTaskInstancesTable(leftPart);
+	}
 
-		// Task selection
-		final Composite taskInstancesBox = new Composite(leftPart, SWT.BORDER);
-		taskInstancesBox.setLayout(SwtUtilities.createSmallMarginGridLayout(1, false));
-		taskInstancesBox.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 7, 1));
+	private void createTasksTable(Composite parent) {
+		final Composite tasksBox = new Composite(parent, SWT.BORDER);
+		tasksBox.setLayout(SwtUtilities.createSmallMarginGridLayout(1, false));
 
-		final Label taskInstancesTableLabel = new Label(taskInstancesBox, SWT.NONE);
+		GridData tasksGridData = new GridData(SWT.FILL, SWT.TOP, true, false, 7, 1);
+		tasksGridData.heightHint = 200;
+		tasksBox.setLayoutData(tasksGridData);
+
+		final Label tasksLabel = new Label(tasksBox, SWT.NONE);
+		tasksLabel.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, true, false));
+		tasksLabel.setText("Tasks");
+		tasksLabel.setFont(new Font(getDisplay(), "Arial", 10, SWT.NONE));
+
+		tasksTable = new Table(tasksBox, SWT.BORDER | SWT.FULL_SELECTION | SWT.VIRTUAL);
+		tasksTable.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+		tasksTable.setHeaderVisible(true);
+		tasksTable.setLinesVisible(true);
+		
+		final TableColumn columnTaskId = new TableColumn(tasksTable, SWT.LEFT);
+		columnTaskId.setWidth(30);
+		columnTaskId.setText("ID");
+
+		final TableColumn columnTaskName = new TableColumn(tasksTable, SWT.LEFT);
+		columnTaskName.setWidth(120);
+		columnTaskName.setText("Task Name");
+		
+		final TableColumn columnCreated = new TableColumn(tasksTable, SWT.LEFT);
+		columnCreated.setWidth(100);
+		columnCreated.setText("Anlagedatum");
+
+		final TableColumn columnCronExpression = new TableColumn(tasksTable, SWT.LEFT);
+		columnCronExpression.setWidth(100);
+		columnCronExpression.setText("Cron Expression");
+		
+		final TableColumn columnNextStart = new TableColumn(tasksTable, SWT.LEFT);
+		columnNextStart.setWidth(100);
+		columnNextStart.setText("Next Start");
+		
+		de.soderer.argonaut.utilities.SwtUtilities.makeSortable(
+			tasksTable,
+			listOfTasksStatus,
+			Arrays.asList(
+				TaskStatus::getTaskID,
+				TaskStatus::getTaskName,
+				TaskStatus::getCreated,
+				t -> t.getCronExpression() == null ? "" : t.getCronExpression(),
+				TaskStatus::getNextScheduledTime
+			)
+		);
+		
+		tasksTable.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent ev) {
+				try {
+					TableItem item = (TableItem) ev.item;
+					if (item != null) {
+						int taskID = Integer.parseInt(item.getText());
+						currentTaskStatus = argoWfSchedulerClient.getTaskStatus(taskID);
+						currentTaskInstanceStatus = null;
+						setupTaskInstancesTable();
+						
+						if (currentTaskStatus != null) {
+							fillParametersPart(currentTaskStatus.getParameters(), true);
+						} else {
+							fillParametersPart(null, false);
+						}
+					}
+				} catch (Exception e) {
+					showErrorMessage(LangResources.get("loadTaskInstances"), "Cannot load task instances: " + e.getMessage());
+				}
+			}
+		});
+	}
+
+	private void createTaskInstancesTable(Composite leftPart) {
+		final Composite instancesBox = new Composite(leftPart, SWT.BORDER);
+		instancesBox.setLayout(SwtUtilities.createSmallMarginGridLayout(1, false));
+		instancesBox.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 7, 1));
+
+		final Label taskInstancesTableLabel = new Label(instancesBox, SWT.NONE);
 		taskInstancesTableLabel.setLayoutData(new GridData(SWT.LEFT, SWT.CENTER, true, false, 1, 1));
-		taskInstancesTableLabel.setText(LangResources.get("executedTaskInstances"));
+		taskInstancesTableLabel.setText(LangResources.get("taskInstances"));
 		taskInstancesTableLabel.setFont(new Font(getDisplay(), "Arial", 10, SWT.None));
 
-		taskInstancesTable = new Table(taskInstancesBox, SWT.BORDER | SWT.MULTI | SWT.FULL_SELECTION | SWT.VIRTUAL);
+		taskInstancesTable = new Table(instancesBox, SWT.BORDER | SWT.MULTI | SWT.FULL_SELECTION | SWT.VIRTUAL);
 		taskInstancesTable.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 1, 1));
 		taskInstancesTable.setHeaderVisible(true);
 		taskInstancesTable.setLinesVisible(true);
-		taskInstancesTable.addSelectionListener(new TableItemSelectionListener());
-
-		columnSortListener = new ColumnSortListener();
-
-		// WindowsBug: First column can not be set to right alignment
-		final TableColumn column = new TableColumn(taskInstancesTable, SWT.RIGHT);
-		column.setWidth(0);
-		column.setText(LangResources.get("columnheader_dummy"));
 
 		final TableColumn columnTaskId = new TableColumn(taskInstancesTable, SWT.RIGHT);
 		columnTaskId.setMoveable(false);
-		columnTaskId.setWidth(40);
-		columnTaskIdIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnTaskId);
+		columnTaskId.setWidth(50);
 		columnTaskId.setText(LangResources.get("columnheader_taskid"));
 
 		final TableColumn columnInstanceId = new TableColumn(taskInstancesTable, SWT.RIGHT);
 		columnInstanceId.setMoveable(true);
 		columnInstanceId.setWidth(40);
 		columnInstanceId.setText(LangResources.get("columnheader_instanceid"));
-		columnInstanceIdIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnInstanceId);
-		columnInstanceId.addListener(SWT.Selection, columnSortListener);
 
 		final TableColumn columnTaskName = new TableColumn(taskInstancesTable, SWT.LEFT);
 		columnTaskName.setMoveable(true);
 		columnTaskName.setWidth(175);
 		columnTaskName.setText(LangResources.get("columnheader_name"));
-		columnTaskNameIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnTaskName);
-		columnTaskName.addListener(SWT.Selection, columnSortListener);
 
 		final TableColumn columnStart = new TableColumn(taskInstancesTable, SWT.LEFT);
 		columnStart.setMoveable(true);
 		columnStart.setWidth(100);
 		columnStart.setText(LangResources.get("columnheader_start"));
-		columnStartIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnStart);
-		columnStart.addListener(SWT.Selection, columnSortListener);
 
 		final TableColumn columnSatus = new TableColumn(taskInstancesTable, SWT.LEFT);
 		columnSatus.setMoveable(true);
 		columnSatus.setWidth(150);
 		columnSatus.setText(LangResources.get("columnheader_status"));
-		columnStatusIndex = Arrays.asList(taskInstancesTable.getColumns()).indexOf(columnSatus);
-		columnSatus.addListener(SWT.Selection, columnSortListener);
+		
+		de.soderer.argonaut.utilities.SwtUtilities.makeSortable(
+			taskInstancesTable,
+			listOfTaskInstancesStatus,
+			Arrays.asList(
+				TaskInstanceStatus::getTaskID,
+				TaskInstanceStatus::getTaskInstanceID,
+				TaskInstanceStatus::getWorkflowId,
+				TaskInstanceStatus::getUpdated,
+				TaskInstanceStatus::getStatus
+			)
+		);
+		
+		taskInstancesTable.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent ev) {
+				try {
+					TableItem item = (TableItem) ev.item;
+					if (item != null) {
+						int taskInstanceID = Integer.parseInt(item.getText(1));
+						currentTaskInstanceStatus = argoWfSchedulerClient.getTaskInstance(taskInstanceID);
+						
+						checkButtonStatus();
+					}
+				} catch (Exception e) {
+					showErrorMessage(LangResources.get("loadTaskInstances"), "Cannot load task instances: " + e.getMessage());
+				}
+			}
+		});
 	}
 
 	protected void configureArgoWfSchedulerClient() {
@@ -602,61 +697,43 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		checkButtonStatus();
 	}
 
-	private void setupTable() {
+	private void setupTasksTable() {
 		try {
-			if (currentFillDataListener != null) {
-				taskInstancesTable.removeListener(SWT.SetData, currentFillDataListener);
-				currentFillDataListener = null;
-				taskInstancesTable.setItemCount(0);
+			if (currentFillTasksDataListener != null) {
+				tasksTable.removeListener(SWT.SetData, currentFillTasksDataListener);
+				currentFillTasksDataListener = null;
+				tasksTable.setItemCount(0);
 			}
 
-			taskInstancesTable.clearAll();
-			for (final TableColumn column : taskInstancesTable.getColumns()) {
-				if (!column.getText().equals(LangResources.get("columnheader_dummy"))
-						&& !column.getText().equals(LangResources.get("columnheader_taskid"))
-						&& !column.getText().equals(LangResources.get("columnheader_instanceid"))
-						&& !column.getText().equals(LangResources.get("columnheader_name"))
-						&& !column.getText().equals(LangResources.get("columnheader_start"))
-						&& !column.getText().equals(LangResources.get("columnheader_status"))) {
-					column.dispose();
-				}
-			}
+			tasksTable.clearAll();
 
-			listOfTaskInstanceStatus = new ArrayList<>();
+			listOfTasksStatus = new ArrayList<>();
+			currentTaskStatus = null;
 			currentTaskInstanceStatus = null;
-			final List<Integer> taskIds = argoWfSchedulerClient.getWorkflowTemplateTaskIds(currentWorkflowTemplateName);
-			for (final Integer taskID : taskIds) {
-				final TaskStatus taskStatus = argoWfSchedulerClient.getTaskStatus(taskID);
-				if (!taskStatus.getInstances().isEmpty()) {
-					for (final TaskInstanceStatus instanceStatus : taskStatus.getInstances().values()) {
-						instanceStatus.setTaskStatus(taskStatus);
-						listOfTaskInstanceStatus.add(instanceStatus);
-					}
-				} else {
-					final TaskInstanceStatus instanceStatus = new TaskInstanceStatus();
-					instanceStatus.setTaskID(taskID);
-					instanceStatus.setTaskInstanceID(-1);
-					instanceStatus.setWorkflowId(taskStatus.getWorkflowName());
-					instanceStatus.setCreated(taskStatus.getCreated());
-					instanceStatus.setUpdated(taskStatus.getUpdated());
-					instanceStatus.setStatus("No Instances");
-					if (Utilities.isNotBlank(taskStatus.getCronExpression())) {
-						instanceStatus.setLogMessage("CronExpression: " + taskStatus.getCronExpression());
-					} else {
-						instanceStatus.setLogMessage("<empty>");
-					}
-					instanceStatus.setTaskStatus(taskStatus);
-					listOfTaskInstanceStatus.add(instanceStatus);
+			listOfTasksStatus = argoWfSchedulerClient.getTasksByWorkflowTemplate(currentWorkflowTemplateName);
+
+			currentFillTasksDataListener = new Listener() {
+				@Override
+				public void handleEvent(Event event) {
+					final TableItem item = (TableItem) event.item;
+					final int index = tasksTable.indexOf(item);
+					
+					final TaskStatus taskStatus = listOfTasksStatus.get(index);
+					
+					item.setText(0, Integer.toString(taskStatus.getTaskID()));
+					item.setText(1, taskStatus.getTaskName());
+					final String start = DateUtilities.formatDate(DateUtilities.DD_MM_YYYY_HH_MM, taskStatus.getCreated().withZoneSameInstant(ZoneId.systemDefault()));
+					item.setText(2, start);
+					item.setText(3, taskStatus.getCronExpression() == null ? "" : taskStatus.getCronExpression());
+					item.setText(4, taskStatus.getNextScheduledTime() == null ? "" : DateUtilities.formatDate(DateUtilities.DD_MM_YYYY_HH_MM, taskStatus.getNextScheduledTime().withZoneSameInstant(ZoneId.systemDefault())));
 				}
-			}
+			};
+			tasksTable.addListener(SWT.SetData, currentFillTasksDataListener);
 
-			currentFillDataListener = new FillDataListener();
-			taskInstancesTable.addListener(SWT.SetData, currentFillDataListener);
+			tasksTable.setItemCount(listOfTasksStatus.size());
 
-			taskInstancesTable.setItemCount(listOfTaskInstanceStatus.size());
-
-			taskInstancesTable.setSortColumn(taskInstancesTable.getColumn(1));
-			taskInstancesTable.setSortDirection(SWT.UP);
+			tasksTable.setSortColumn(tasksTable.getColumn(0));
+			tasksTable.setSortDirection(SWT.UP);
 
 			for (final Control field : parametersPart.getChildren()) {
 				field.dispose();
@@ -670,24 +747,55 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		}
 	}
 
-	private class FillDataListener implements Listener {
-		@Override
-		public void handleEvent(final Event event) {
-			final TableItem item = (TableItem) event.item;
-			final int index = taskInstancesTable.indexOf(item);
-			fillPropertyDataInTableItem(index, item);
-		}
-	}
+	private void setupTaskInstancesTable() {
+		try {
+			if (currentFillTaskInstancesDataListener != null) {
+				taskInstancesTable.removeListener(SWT.SetData, currentFillTaskInstancesDataListener);
+				currentFillTaskInstancesDataListener = null;
+				taskInstancesTable.setItemCount(0);
+			}
 
-	public void fillPropertyDataInTableItem(final int index, final TableItem item) {
-		final TaskInstanceStatus taskInstanceStatus = listOfTaskInstanceStatus.get(index);
-		// 0 = DummyColumn
-		item.setText(columnTaskIdIndex, Integer.toString(taskInstanceStatus.getTaskID()));
-		item.setText(columnInstanceIdIndex, Integer.toString(taskInstanceStatus.getTaskInstanceID()));
-		item.setText(columnTaskNameIndex, taskInstanceStatus.getWorkflowId());
-		final String start = DateUtilities.formatDate(DateUtilities.ISO_8601_DATETIME_FORMAT_NO_TIMEZONE, taskInstanceStatus.getUpdated().withZoneSameInstant(ZoneId.systemDefault()));
-		item.setText(columnStartIndex, start);
-		item.setText(columnStatusIndex, taskInstanceStatus.getStatus());
+			taskInstancesTable.clearAll();
+
+			currentTaskInstanceStatus = null;
+			if (currentTaskStatus != null) {
+				listOfTaskInstancesStatus = argoWfSchedulerClient.getTaskInstances(currentTaskStatus.getTaskID());
+			} else {
+				listOfTaskInstancesStatus = new ArrayList<>();
+			}
+
+			currentFillTaskInstancesDataListener = new Listener() {
+				@Override
+				public void handleEvent(Event event) {
+					final TableItem item = (TableItem) event.item;
+					final int index = taskInstancesTable.indexOf(item);
+					
+					final TaskInstanceStatus taskInstanceStatus = listOfTaskInstancesStatus.get(index);
+					
+					item.setText(0, Integer.toString(taskInstanceStatus.getTaskID()));
+					item.setText(1, Integer.toString(taskInstanceStatus.getTaskInstanceID()));
+					item.setText(2, taskInstanceStatus.getWorkflowId());
+					item.setText(3, DateUtilities.formatDate(DateUtilities.DD_MM_YYYY_HH_MM, taskInstanceStatus.getCreated().withZoneSameInstant(ZoneId.systemDefault())));
+					item.setText(4, taskInstanceStatus.getStatus() == null ? "" : taskInstanceStatus.getStatus());
+				}
+			};
+			taskInstancesTable.addListener(SWT.SetData, currentFillTaskInstancesDataListener);
+
+			taskInstancesTable.setItemCount(listOfTaskInstancesStatus.size());
+
+			taskInstancesTable.setSortColumn(taskInstancesTable.getColumn(0));
+			taskInstancesTable.setSortDirection(SWT.UP);
+
+			for (final Control field : parametersPart.getChildren()) {
+				field.dispose();
+			}
+
+			parametersPart.layout();
+
+			checkButtonStatus();
+		} catch (final Exception e) {
+			showErrorMessage(LangResources.get("startTask"), "Cannot show task instance in table: " + e.getMessage());
+		}
 	}
 
 	private void createRightPart(final SashForm parent) throws Exception {
@@ -735,11 +843,11 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				showData(LangResources.get("showLogData"), currentTaskInstanceStatus.getLogMessage());
 			}
 		});
-
+		
 		final Composite timeTriggerRegion = new Composite(buttonRegion, SWT.NONE);
 		timeTriggerRegion.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false, 2, 1));
 		timeTriggerRegion.setLayout(SwtUtilities.createSmallMarginGridLayout(2, false));
-
+		
 		activateTimeTriggerButton = new Button(timeTriggerRegion, SWT.CHECK);
 		activateTimeTriggerButton.setLayoutData(new GridData(SWT.LEFT, SWT.BOTTOM, false, false));
 		activateTimeTriggerButton.setText(LangResources.get("timeTrigger"));
@@ -749,17 +857,17 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				if (activateTimeTriggerButton.getSelection()) {
 					startTaskButton.setText(LangResources.get("createTimeTriggeredTask"));
 				} else {
-					startTaskButton.setText(LangResources.get("startTaskOnce"));
+					startTaskButton.setText(LangResources.get("createAndStartTaskOnce"));
 				}
 			}
 		});
-
+		
 		cronExpressionText = new Text(timeTriggerRegion, SWT.BORDER);
 		cronExpressionText.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false));
-		final ZonedDateTime now = ZonedDateTime.now();
-		final String cronExpressionNow = DateUtilities.formatDate("* m H d M y", now.withZoneSameInstant(ZoneId.of("UTC")));
+		ZonedDateTime now = ZonedDateTime.now();
+		String cronExpressionNow = DateUtilities.formatDate("* m H d M y", now.withZoneSameInstant(ZoneId.of("UTC")));
 		cronExpressionText.setText(cronExpressionNow); // "0 0 0 31 2 *"
-
+		
 		createParameterConfigurationButton = new Button(buttonRegion, SWT.PUSH);
 		createParameterConfigurationButton.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false, 2, 1));
 		createParameterConfigurationButton.setText(LangResources.get("createParameterConfiguration"));
@@ -773,14 +881,14 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 						for (final Entry<String, Text> parameterTextFieldEntry : parametersTextFields.entrySet()) {
 							parameters.put(parameterTextFieldEntry.getKey(), parameterTextFieldEntry.getValue().getText());
 						}
-
+						
 						if (activateTimeTriggerButton.getSelection()) {
 							parameterConfiguration = argoWfSchedulerClient.createParameterConfiguration(currentWorkflowTemplateName, parameters, cronExpressionText.getText());
 						} else {
 							parameterConfiguration = argoWfSchedulerClient.createParameterConfiguration(currentWorkflowTemplateName, parameters, null);
 						}
 					} catch (final Exception e) {
-						showErrorMessage(LangResources.get("startTaskOnce"), "Cannot create new task: " + e.getMessage());
+						showErrorMessage(LangResources.get("createAndStartTaskOnce"), "Cannot create new task: " + e.getMessage());
 						return;
 					}
 
@@ -797,7 +905,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 		startTaskButton = new Button(buttonRegion, SWT.PUSH);
 		startTaskButton.setLayoutData(new GridData(SWT.FILL, SWT.BOTTOM, true, false));
-		startTaskButton.setText(LangResources.get("startTaskOnce"));
+		startTaskButton.setText(LangResources.get("createAndStartTaskOnce"));
 		startTaskButton.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(final SelectionEvent ev) {
@@ -813,7 +921,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 							for (final Entry<String, Text> parameterTextFieldEntry : parametersTextFields.entrySet()) {
 								parameters.put(parameterTextFieldEntry.getKey(), parameterTextFieldEntry.getValue().getText());
 							}
-
+							
 							if (activateTimeTriggerButton.getSelection()) {
 								taskID = argoWfSchedulerClient.createTask(currentWorkflowTemplateName, parameters, cronExpressionText.getText());
 							} else {
@@ -825,19 +933,19 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 						}
 
 						if (activateTimeTriggerButton.getSelection()) {
-							showMessage(LangResources.get("startTaskOnce"), LangResources.get("startedTask", taskID));
+							showMessage(LangResources.get("createAndStartTaskOnce"), LangResources.get("startedTask", taskID));
 						} else {
 							try {
 								argoWfSchedulerClient.startTask(taskID);
 							} catch (final Exception e) {
-								showErrorMessage(LangResources.get("startTaskOnce"), "Cannot start newly created task: " + e.getMessage());
+								showErrorMessage(LangResources.get("createAndStartTaskOnce"), "Cannot start newly created task: " + e.getMessage());
 							}
-
+	
 							pleaseWaitDialog.hide();
 							pleaseWaitDialog = null;
-
-							showMessage(LangResources.get("startTaskOnce"), LangResources.get("startedTask", taskID));
-						}
+	
+							showMessage(LangResources.get("createAndStartTaskOnce"), LangResources.get("startedTask", taskID));
+						} 
 					} else {
 						currentTaskInstanceStatus = null;
 
@@ -866,33 +974,6 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		checkButtonStatus();
 	}
 
-	private class TableItemSelectionListener extends SelectionAdapter {
-		@Override
-		public void widgetSelected(final SelectionEvent e) {
-			final List<Tuple<String, String>> selectedItems = getSelectedKeys();
-
-			currentTaskInstanceStatus = null;
-
-			if (selectedItems.size() > 0) {
-				final Tuple<String, String> selectedItem = selectedItems.get(0);
-				for (final TaskInstanceStatus instanceStatus : listOfTaskInstanceStatus) {
-					if (instanceStatus.getTaskID().equals(Integer.parseInt(selectedItem.getFirst())) && instanceStatus.getTaskInstanceID().equals(Integer.parseInt(selectedItem.getSecond()))) {
-						currentTaskInstanceStatus = instanceStatus;
-						break;
-					}
-				}
-			}
-
-			if (currentTaskInstanceStatus != null) {
-				fillParametersPart(currentTaskInstanceStatus.getTaskStatus().getParameters(), true);
-			} else {
-				fillParametersPart(null, false);
-			}
-
-			checkButtonStatus();
-		}
-	}
-
 	private void fillParametersPart(final Map<String, String> taskParameters, final boolean makeParametersReadOnly) {
 		for (final Control field : parametersPart.getChildren()) {
 			field.dispose();
@@ -911,7 +992,7 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 				parametersTextFields.put(parametersEntry.getKey(), parameterTextfield);
 			}
 		}
-
+		
 		scrolledPart.setMinSize(parametersPart.computeSize(SWT.DEFAULT, SWT.DEFAULT));
 		scrolledPart.layout(true, true);
 		rightPart.layout(true, true);
@@ -965,12 +1046,21 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 		}
 
 		if (startTaskButton != null) {
-			if (currentTaskInstanceStatus == null) {
-				startTaskButton.setText(LangResources.get("startTaskOnce"));
+			if (currentTaskStatus == null) {
+				startTaskButton.setText(LangResources.get("createAndStartTaskOnce"));
 			} else {
 				startTaskButton.setText(LangResources.get("prepareTask"));
 			}
 			startTaskButton.setEnabled(Utilities.isNotBlank(currentWorkflowTemplateName));
+		}
+
+		if (tasksTable != null) {
+			tasksTable.setEnabled(tasksTable.getItemCount() > 0);
+			
+			activateTimeTriggerButton.setEnabled(currentTaskStatus != null);
+			cronExpressionText.setEnabled(currentTaskStatus != null);
+			startTaskButton.setEnabled(currentTaskStatus != null);
+			createParameterConfigurationButton.setEnabled(currentTaskStatus != null);
 		}
 
 		if (taskInstancesTable != null) {
@@ -990,30 +1080,6 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 	public void close() {
 		applicationConfiguration.save();
 		dispose();
-	}
-
-	private class ColumnSortListener implements Listener {
-		@Override
-		public void handleEvent(final Event event) {
-
-			refreshTable();
-		}
-	}
-
-	private void refreshTable() {
-		taskInstancesTable.deselectAll();
-
-		taskInstancesTable.setRedraw(false);
-		taskInstancesTable.clearAll();
-		taskInstancesTable.setRedraw(true);
-	}
-
-	private List<Tuple<String, String>> getSelectedKeys() {
-		final List<Tuple<String, String>> returnList = new ArrayList<>();
-		for (final TableItem item : taskInstancesTable.getSelection()) {
-			returnList.add(new Tuple<>(item.getText(1), item.getText(2)));
-		}
-		return returnList;
 	}
 
 	public static String[] getTextValues(final TableItem item) {

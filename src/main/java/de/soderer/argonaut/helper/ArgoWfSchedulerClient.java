@@ -40,10 +40,10 @@ public class ArgoWfSchedulerClient {
 
 	private TrustManager trustManager = null;
 
-	private String accesToken = null;
+	private String accessToken = null;
 	private ZonedDateTime accessTokenValidUntil = null;
 
-	public ArgoWfSchedulerClient(final ProxyConfiguration proxyConfiguration, final boolean tlsServerCertificateCheck, final String idpUrl, final String realmID, final String clientID, final String clientSecret, final String cookieData, final String argoWfSchedulerBaseUrl) throws Exception {
+	public ArgoWfSchedulerClient(final ProxyConfiguration proxyConfiguration, final boolean tlsServerCertificateCheck, final String idpUrl, final String realmID, final String clientID, final String clientSecret, String cookieData, final String argoWfSchedulerBaseUrl) throws Exception {
 		this.proxyConfiguration = proxyConfiguration;
 		this.idpUrl = idpUrl;
 		this.realmID = realmID;
@@ -69,7 +69,7 @@ public class ArgoWfSchedulerClient {
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
 			if (response.getHttpCode() == 200) {
-				if (response.getHeaders().containsKey("Content-Type") && !"application/json".equals(response.getHeaders().get("Content-Type"))) {
+				if (response.getHeaders().containsKey("Content-Type") && !response.getHeaders().get("Content-Type").startsWith("application/json") && !response.getHeaders().get("Content-Type").equals("application/json")) {
 					throw new Exception("Invalid WorkflowNames data type: " + response.getHeaders().get("Content-Type"));
 				}
 
@@ -86,7 +86,7 @@ public class ArgoWfSchedulerClient {
 				}
 				return returnList;
 			} else {
-				throw new Exception("getWorkflowNames failed. Http Code: " + response.getHttpCode());
+				throw new Exception("getWorkflowNames failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -120,7 +120,7 @@ public class ArgoWfSchedulerClient {
 				}
 				return returnMap;
 			} else {
-				throw new Exception("getWorkflowTemplateParameters failed. Http Code: " + response.getHttpCode());
+				throw new Exception("getWorkflowTemplateParameters failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -164,7 +164,7 @@ public class ArgoWfSchedulerClient {
 			request.addHeader("accept", "application/json");
 			request.addHeader("Content-Type", "application/json");
 
-			final String requestBody = createParameterConfiguration(workflowName, taskParameters, cronExpression);
+			String requestBody = createParameterConfiguration(workflowName, taskParameters, cronExpression);
 
 			request.setRequestBody(requestBody);
 
@@ -180,7 +180,7 @@ public class ArgoWfSchedulerClient {
 				final JsonObject jsonObject = ((JsonObject) contentJson);
 				return (Integer) jsonObject.getSimpleValue("id");
 			} else {
-				throw new Exception("createTask failed. Http Code: " + response.getHttpCode());
+				throw new Exception("createTask failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -210,7 +210,7 @@ public class ArgoWfSchedulerClient {
 				final JsonArray jsonArray = ((JsonArray) contentJson);
 				return jsonArray;
 			} else {
-				throw new Exception("getAllTasks failed. Http Code: " + response.getHttpCode());
+				throw new Exception("getAllTasks failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -247,7 +247,72 @@ public class ArgoWfSchedulerClient {
 				}
 				return returnMap;
 			} else {
-				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode());
+				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
+			}
+		} catch (final UnknownHostException e) {
+			throw new Exception("UnknownHost '" + e.getMessage() + "'");
+		}
+	}
+
+	public List<TaskInstanceStatus> getTaskInstances(final int taskID) throws Exception {
+		try {
+			final String accessToken = aquireAccessTokenByClientId();
+
+			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/instances/search");
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
+			request.addHeader("accept", "application/json");
+			request.addUrlParameter("taskId", taskID);
+
+			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
+			if (response.getHttpCode() == 200) {
+				JsonNode contentJson;
+				try {
+					contentJson = JsonReader.readJsonItemString(response.getContent());
+				} catch (final Exception e) {
+					throw new Exception("Invalid Task JSON data", e);
+				}
+
+				List<TaskInstanceStatus> taskInstances = new ArrayList<>();
+				JsonObject contentJsonObject = (JsonObject) contentJson;
+				for (JsonNode item : ((JsonArray) contentJsonObject.get("instances")).items()) {
+					taskInstances.add(readTaskInstanceStatus((JsonObject) item));
+				}
+				return taskInstances;
+			} else {
+				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
+			}
+		} catch (final UnknownHostException e) {
+			throw new Exception("UnknownHost '" + e.getMessage() + "'");
+		}
+	}
+
+	public TaskInstanceStatus getTaskInstance(final int taskInstanceID) throws Exception {
+		try {
+			final String accessToken = aquireAccessTokenByClientId();
+
+			final HttpRequest request = new HttpRequest(HttpMethod.GET, argoWfSchedulerBaseUrl + "/instances/" + taskInstanceID);
+			request.addHeader(HttpConstants.HTTPHEADERNAME_AUTHORIZATION, HttpConstants.AUTHORIZATIONHEADER_START_BEARER + " " + accessToken);
+			if (Utilities.isNotBlank(cookieData)) {
+				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
+			}
+			request.addHeader("accept", "application/json");
+
+			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
+			if (response.getHttpCode() == 200) {
+				JsonNode contentJson;
+				try {
+					contentJson = JsonReader.readJsonItemString(response.getContent());
+				} catch (final Exception e) {
+					throw new Exception("Invalid Task JSON data", e);
+				}
+
+				TaskInstanceStatus taskInstanceStatus = readTaskInstanceStatus((JsonObject) contentJson);
+				return taskInstanceStatus;
+			} else {
+				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -267,7 +332,7 @@ public class ArgoWfSchedulerClient {
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
 			if (response.getHttpCode() != 200) {
-				throw new Exception("startTask failed. Http Code: " + response.getHttpCode());
+				throw new Exception("startTask failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -289,7 +354,7 @@ public class ArgoWfSchedulerClient {
 			if (response.getHttpCode() == 204) {
 				return true;
 			} else {
-				throw new Exception("deleteTask failed. Http Code: " + response.getHttpCode());
+				throw new Exception("deleteTask failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -298,8 +363,9 @@ public class ArgoWfSchedulerClient {
 
 	private String aquireAccessTokenByClientId() throws Exception {
 		try {
-			if (accesToken == null || ZonedDateTime.now().isAfter(accessTokenValidUntil.minusSeconds(10))) {
+			if (accessToken == null || ZonedDateTime.now().isAfter(accessTokenValidUntil.minusSeconds(10))) {
 				final HttpRequest request = new HttpRequest(HttpMethod.POST, idpUrl + "/realms/" + realmID + "/protocol/openid-connect/token");
+				request.addHeader("Content-Type", "application/x-www-form-urlencoded");
 				request.addPostParameter("grant_type", "client_credentials");
 				request.addPostParameter("client_id", clientID);
 				request.addPostParameter("client_secret", clientSecret);
@@ -312,22 +378,22 @@ public class ArgoWfSchedulerClient {
 					} catch (final Exception e) {
 						throw new Exception("Invalid AccessToken JSON data", e);
 					}
-					accesToken = (String) ((JsonObject) contentJson).getSimpleValue("access_token");
-					accessTokenValidUntil = JwtUtilities.getJwtTokenValidity(accesToken);
+					accessToken = (String) ((JsonObject) contentJson).getSimpleValue("access_token");
+					accessTokenValidUntil = JwtUtilities.getJwtTokenValidity(accessToken);
 				} else {
-					accesToken = null;
+					accessToken = null;
 					accessTokenValidUntil = null;
-					throw new Exception("aquireAccessToken failed. Http Code: " + response.getHttpCode());
+					throw new Exception("aquireAccessToken failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 				}
 			}
 
-			return accesToken;
+			return accessToken;
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
 		}
 	}
 
-	public List<Integer> getWorkflowTemplateTaskIds(final String workflowTemplateName) throws Exception {
+	public List<TaskStatus> getTasksByWorkflowTemplate(final String workflowTemplateName) throws Exception {
 		try {
 			final String accessToken = aquireAccessTokenByClientId();
 
@@ -337,7 +403,6 @@ public class ArgoWfSchedulerClient {
 				request.addHeader(HttpConstants.HTTPHEADERNAME_COOKIE, cookieData);
 			}
 			request.addHeader("accept", "application/json");
-			request.addUrlParameter("name", workflowTemplateName);
 
 			final HttpResponse response = HttpUtilities.executeHttpRequest(request, proxyConfiguration.getProxy(request.getUrl()), trustManager);
 			if (response.getHttpCode() == 200) {
@@ -348,15 +413,33 @@ public class ArgoWfSchedulerClient {
 					throw new Exception("Invalid Task JSON data", e);
 				}
 
-				final List<Integer> returnList = new ArrayList<>();
+				final List<TaskStatus> returnList = new ArrayList<>();
 				final JsonArray jsonArray = ((JsonArray) contentJson);
 				for (final JsonNode item : jsonArray.items()) {
 					final JsonObject itemJsonObject = (JsonObject) item;
-					returnList.add((Integer) itemJsonObject.getSimpleValue("id"));
+					int taskID = ((Integer) itemJsonObject.getSimpleValue("id"));
+					TaskStatus taskStatus = getTaskStatus(taskID);
+					if (taskStatus.getWorkflowName().equals(workflowTemplateName)) {
+						Boolean active = ((Boolean) itemJsonObject.getSimpleValue("active"));
+						if (active != null && active) {
+							String cronExpression = ((String) itemJsonObject.getSimpleValue("cronExpression"));
+							if (Utilities.isNotBlank(cronExpression)) {
+								taskStatus.setCronExpression(cronExpression);
+							}
+	
+							String nextScheduledTimeString = ((String) itemJsonObject.getSimpleValue("nextScheduledTime"));
+							if (Utilities.isNotBlank(nextScheduledTimeString)) {
+								taskStatus.setNextScheduledTime(DateUtilities.parseIso8601DateTimeString(nextScheduledTimeString));
+							}
+						} else {
+							taskStatus.setCronExpression("ONCE");
+						}
+						returnList.add(taskStatus);
+					}
 				}
 				return returnList;
 			} else {
-				throw new Exception("getWorkflowTemplateTaskIds failed. Http Code: " + response.getHttpCode());
+				throw new Exception("getWorkflowTemplateTaskIds failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -412,16 +495,16 @@ public class ArgoWfSchedulerClient {
 					parametersMap.put((String) taskParameterJsonObject.getSimpleValue("name"), (String) taskParameterJsonObject.getSimpleValue("value"));
 				}
 				status.setParameters(parametersMap);
-
-				final Boolean active = (Boolean) jsonObject.getSimpleValue("active");
-				final String cronExpression = (String) jsonObject.getSimpleValue("cronExpression");
+				
+				Boolean active = (Boolean) jsonObject.getSimpleValue("active");
+				String cronExpression = (String) jsonObject.getSimpleValue("cronExpression");
 				if (active != null && active && Utilities.isNotBlank(cronExpression)) {
 					status.setCronExpression(cronExpression);
 				}
 
 				return status;
 			} else {
-				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode());
+				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -450,7 +533,7 @@ public class ArgoWfSchedulerClient {
 
 				return readTaskInstanceStatus((JsonObject) contentJson);
 			} else {
-				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode());
+				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}
 		} catch (final UnknownHostException e) {
 			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -501,7 +584,7 @@ public class ArgoWfSchedulerClient {
 	//				}
 	//				return returnList;
 	//			} else {
-	//				throw new Exception("getAllTasks failed. Http Code: " + response.getHttpCode());
+	//				throw new Exception("getAllTasks failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 	//			}
 	//		} catch (final UnknownHostException e) {
 	//			throw new Exception("UnknownHost '" + e.getMessage() + "'");
@@ -539,11 +622,10 @@ public class ArgoWfSchedulerClient {
 	//
 	//				return returnMap;
 	//			} else {
-	//				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode());
+	//				throw new Exception("getTaskStatus failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 	//			}
 	//		} catch (final UnknownHostException e) {
 	//			throw new Exception("UnknownHost '" + e.getMessage() + "'");
 	//		}
 	//	}
 }
-
