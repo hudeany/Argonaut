@@ -79,12 +79,19 @@ public class ArgoWfSchedulerClient {
 				} catch (final Exception e) {
 					throw new Exception("Invalid WorkflowNames JSON data", e);
 				}
-				final JsonArray workflowNamesArray = ((JsonArray) contentJson);
-				final List<String> returnList = new ArrayList<>();
-				for (final Object workflowNameObject : workflowNamesArray) {
-					returnList.add((String) workflowNameObject);
+				
+				if (contentJson.isJsonArray()) {
+					final JsonArray workflowNamesArray = ((JsonArray) contentJson);
+					final List<String> returnList = new ArrayList<>();
+					for (final Object workflowNameObject : workflowNamesArray) {
+						returnList.add((String) workflowNameObject);
+					}
+					return returnList;
+				} else if (contentJson.isJsonObject() && "ok".equalsIgnoreCase((String) ((JsonObject) contentJson).getSimpleValue("status"))) {
+					throw new Exception("Server '" + argoWfSchedulerBaseUrl + "' is currently not responding to ArgoWF requests");
+				} else {
+					throw new Exception("Server '" + argoWfSchedulerBaseUrl + "' responds with unexpected data to ArgoWF requests");
 				}
-				return returnList;
 			} else {
 				throw new Exception("getWorkflowNames failed. Http Code: " + response.getHttpCode() + " (" + HttpUtilities.getHttpStatusText(response.getHttpCode()) + ")");
 			}

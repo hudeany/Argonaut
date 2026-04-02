@@ -712,10 +712,13 @@ public class ArgonautDialog extends UpdateableGuiApplication {
 
 			tasksTable.clearAll();
 
-			listOfTasksStatus = new ArrayList<>();
 			currentTaskStatus = null;
 			currentTaskInstanceStatus = null;
-			listOfTasksStatus = argoWfSchedulerClient.getTasksByWorkflowTemplate(currentWorkflowTemplateName);
+			if (Utilities.isNotBlank(currentWorkflowTemplateName)) {
+				listOfTasksStatus = argoWfSchedulerClient.getTasksByWorkflowTemplate(currentWorkflowTemplateName);
+			} else {
+				listOfTasksStatus = new ArrayList<>();
+			}
 
 			currentFillTasksDataListener = new Listener() {
 				@Override
